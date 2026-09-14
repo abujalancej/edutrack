@@ -1,0 +1,43 @@
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import type { FullSeguimentApi } from '../shared/types/ipc';
+
+const api: FullSeguimentApi = {
+  getInitialState: () => ipcRenderer.invoke('state:get'),
+  saveLanguage: language => ipcRenderer.invoke('language:save', language),
+  saveProfile: profile => ipcRenderer.invoke('profile:save', profile),
+  importCenterData: () => ipcRenderer.invoke('configuration:center-import'),
+  clearCenterData: () => ipcRenderer.invoke('configuration:center-clear'),
+  importCourses: () => ipcRenderer.invoke('configuration:courses-import'),
+  importSubjects: () => ipcRenderer.invoke('configuration:subjects-import'),
+  chooseSchoolLogo: () => ipcRenderer.invoke('configuration:logo-choose'),
+  removeSchoolLogo: () => ipcRenderer.invoke('configuration:logo-remove'),
+  addStudent: (course, name) => ipcRenderer.invoke('student:add', course, name),
+  updateStudent: (id, name) => ipcRenderer.invoke('student:update', id, name),
+  deleteStudent: id => ipcRenderer.invoke('student:delete', id),
+  reorderStudents: (course, ids) => ipcRenderer.invoke('student:reorder', course, ids),
+  chooseRosterFile: () => ipcRenderer.invoke('roster:choose'),
+  analyzeRosterFile: path => ipcRenderer.invoke('roster:analyze', path),
+  replaceCourseRoster: (course, names) => ipcRenderer.invoke('roster:replace', course, names),
+  createWorksheet: input => ipcRenderer.invoke('worksheet:create', input),
+  configureElectiveStudents: (worksheetId, enabledStudentIds) => ipcRenderer.invoke('worksheet:elective-students', worksheetId, enabledStudentIds),
+  deleteWorksheet: id => ipcRenderer.invoke('worksheet:delete', id),
+  getWorksheet: id => ipcRenderer.invoke('worksheet:get', id),
+  addAssessment: input => ipcRenderer.invoke('assessment:add', input),
+  renameColumn: (id, name) => ipcRenderer.invoke('column:rename', id, name),
+  updateAssessment: (id, input) => ipcRenderer.invoke('assessment:update', id, input),
+  deleteColumn: id => ipcRenderer.invoke('column:delete', id),
+  saveCell: (worksheetId, studentId, columnId, field, value) => ipcRenderer.invoke('cell:save', worksheetId, studentId, columnId, field, value),
+  clearAssessmentValues: (worksheetId, columnId) => ipcRenderer.invoke('assessment:clear-values', worksheetId, columnId),
+  exportWorksheet: id => ipcRenderer.invoke('worksheet:export', id),
+  chooseImportFiles: () => ipcRenderer.invoke('import:choose'),
+  getDroppedFilePath: file => webUtils.getPathForFile(file),
+  analyzeImports: paths => ipcRenderer.invoke('import:analyze', paths),
+  commitImport: data => ipcRenderer.invoke('import:commit', data),
+  getImportedWorksheet: id => ipcRenderer.invoke('import:get', id),
+  deleteImportedWorksheet: id => ipcRenderer.invoke('import:delete', id),
+  saveTutorObservation: (reportId, studentId, observation) => ipcRenderer.invoke('tutor-observation:save', reportId, studentId, observation),
+  copyTrackingReport: reportId => ipcRenderer.invoke('tracking-report:copy', reportId),
+  exportTrackingReports: reportId => ipcRenderer.invoke('tracking-reports:export', reportId),
+  deleteTrackingReport: reportId => ipcRenderer.invoke('tracking-report:delete', reportId)
+};
+contextBridge.exposeInMainWorld('fullSeguiment', api);

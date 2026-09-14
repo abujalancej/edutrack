@@ -1,0 +1,624 @@
+import { DatabaseSync } from 'node:sqlite';
+import { randomUUID } from 'node:crypto';
+import { COURSE_LABELS, COURSE_LEVELS, normalizeTrimester, SUBJECTS_BY_COURSE, type CourseLevel, type Trimester } from '../../shared/catalogs/catalogs';
+import type { AppLanguage, AssessmentKind, ConfiguredCourse, ConfiguredSubject, FullSeguimentExport, GradeMode, ImportedWorksheetDetail, ImportedWorksheetSummary, InitialState, Student, TeacherProfile, TrackingReportSummary, WorksheetDetail, WorksheetSummary } from '../../shared/types/models';
+
+type Row = Record<string, any>;
+
+const isCompleteImportedGrade = (value: string, mode: GradeMode) => {
+  if (mode === 'LETTER') return value.trim() !== '';
+  const normalized = value.trim().replace(',', '.');
+  const numeric = Number(normalized);
+  return normalized !== '' && /^\d{1,2}(\.\d{1,2})?$/.test(normalized) && numeric >= 0 && numeric <= 10;
+};
+
+export class AppDatabase {
+  private readonly db: DatabaseSync;
+
+  constructor(path: string) {
+    this.db = new DatabaseSync(path);
+    this.db.exec('PRAGMA journal_mode = WAL');
+    this.db.exec('PRAGMA foreign_keys = ON');
+    this.migrate();
+  }
+
+  private migrate() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS teacher_profile (
+        id INTEGER PRIMARY KEY CHECK (id = 1), first_name TEXT NOT NULL DEFAULT '', last_name TEXT NOT NULL DEFAULT '',
+        sex TEXT NOT NULL DEFAULT 'MALE'
+      );
+      INSERT OR IGNORE INTO teacher_profile (id) VALUES (1);
+      CREATE TABLE IF NOT EXISTS app_preferences (
+        id INTEGER PRIMARY KEY CHECK (id = 1), language TEXT NOT NULL DEFAULT 'es', school_logo TEXT NOT NULL DEFAULT ''
+      );
+      INSERT OR IGNORE INTO app_preferences (id, language) VALUES (1, 'es');
+      CREATE TABLE IF NOT EXISTS configured_courses (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, sort_order INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS configured_subjects (
+        course_id TEXT NOT NULL REFERENCES configured_courses(id) ON DELETE CASCADE,
+        name TEXT NOT NULL, sort_order INTEGER NOT NULL, PRIMARY KEY(course_id, name)
+      );
+      CREATE INDEX IF NOT EXISTS idx_configured_subjects_course ON configured_subjects(course_id, sort_order);
+      CREATE TABLE IF NOT EXISTS students (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, course_level TEXT NOT NULL, full_name TEXT NOT NULL,
+        sort_order INTEGER NOT NULL, created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_students_course ON students(course_level, sort_order);
+      CREATE TABLE IF NOT EXISTS worksheets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, course_level TEXT NOT NULL, trimester TEXT NOT NULL, subject TEXT NOT NULL,
+        grade_mode TEXT NOT NULL DEFAULT 'NUMERIC', is_elective INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(course_level, trimester, subject)
+      );
+      CREATE TABLE IF NOT EXISTS worksheet_disabled_students (
+        worksheet_id INTEGER NOT NULL REFERENCES worksheets(id) ON DELETE CASCADE,
+        student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+        PRIMARY KEY (worksheet_id, student_id)
+      );
+      CREATE TABLE IF NOT EXISTS worksheet_columns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, worksheet_id INTEGER NOT NULL REFERENCES worksheets(id) ON DELETE CASCADE,
+        export_id TEXT NOT NULL UNIQUE, name TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'CONTINUOUS_ASSESSMENT',
+        assessment_date TEXT NOT NULL DEFAULT '', sort_order INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS worksheet_values (
+        worksheet_id INTEGER NOT NULL REFERENCES worksheets(id) ON DELETE CASCADE,
+        student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+        column_id INTEGER NOT NULL REFERENCES worksheet_columns(id) ON DELETE CASCADE,
+        value TEXT NOT NULL, observation TEXT NOT NULL DEFAULT '', PRIMARY KEY (worksheet_id, student_id, column_id)
+      );
+      CREATE TABLE IF NOT EXISTS tracking_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, course_level TEXT NOT NULL, trimester TEXT NOT NULL,
+        report_number INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(course_level, trimester, report_number)
+      );
+      CREATE TABLE IF NOT EXISTS imported_worksheets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, report_id INTEGER NOT NULL REFERENCES tracking_reports(id) ON DELETE CASCADE,
+        course_level TEXT NOT NULL, trimester TEXT NOT NULL, subject TEXT NOT NULL,
+        teacher_first_name TEXT NOT NULL, teacher_last_name TEXT NOT NULL, exported_at TEXT NOT NULL,
+        imported_at TEXT NOT NULL, payload_json TEXT NOT NULL, is_elective INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(report_id, subject)
+      );
+      CREATE TABLE IF NOT EXISTS tutor_observations (
+        report_id INTEGER NOT NULL REFERENCES tracking_reports(id) ON DELETE CASCADE,
+        student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+        observation TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (report_id, student_id)
+      );
+    `);
+    const columnInfo = this.db.prepare('PRAGMA table_info(worksheet_columns)').all() as Row[];
+    if (!columnInfo.some(column => column.name === 'kind')) this.db.exec("ALTER TABLE worksheet_columns ADD COLUMN kind TEXT NOT NULL DEFAULT 'CONTINUOUS_ASSESSMENT'");
+    if (!columnInfo.some(column => column.name === 'assessment_date')) this.db.exec("ALTER TABLE worksheet_columns ADD COLUMN assessment_date TEXT NOT NULL DEFAULT ''");
+    const valueInfo = this.db.prepare('PRAGMA table_info(worksheet_values)').all() as Row[];
+    if (!valueInfo.some(column => column.name === 'observation')) this.db.exec("ALTER TABLE worksheet_values ADD COLUMN observation TEXT NOT NULL DEFAULT ''");
+    const preferenceInfo = this.db.prepare('PRAGMA table_info(app_preferences)').all() as Row[];
+    if (!preferenceInfo.some(column => column.name === 'school_logo')) this.db.exec("ALTER TABLE app_preferences ADD COLUMN school_logo TEXT NOT NULL DEFAULT ''");
+    const worksheetInfo = this.db.prepare('PRAGMA table_info(worksheets)').all() as Row[];
+    if (!worksheetInfo.some(column => column.name === 'grade_mode')) this.db.exec("ALTER TABLE worksheets ADD COLUMN grade_mode TEXT NOT NULL DEFAULT 'NUMERIC'");
+    if (!worksheetInfo.some(column => column.name === 'is_elective')) this.db.exec('ALTER TABLE worksheets ADD COLUMN is_elective INTEGER NOT NULL DEFAULT 0');
+    let importInfo = this.db.prepare('PRAGMA table_info(imported_worksheets)').all() as Row[];
+    if (!importInfo.some(column => column.name === 'is_elective')) { this.db.exec('ALTER TABLE imported_worksheets ADD COLUMN is_elective INTEGER NOT NULL DEFAULT 0'); importInfo = this.db.prepare('PRAGMA table_info(imported_worksheets)').all() as Row[]; }
+    if (!importInfo.some(column => column.name === 'report_id')) {
+      this.db.exec(`
+        INSERT OR IGNORE INTO tracking_reports(course_level, trimester, report_number, created_at, updated_at)
+          SELECT course_level, trimester, 1, MIN(imported_at), MAX(imported_at) FROM imported_worksheets GROUP BY course_level, trimester;
+        CREATE TABLE imported_worksheets_v2 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, report_id INTEGER NOT NULL REFERENCES tracking_reports(id) ON DELETE CASCADE,
+          course_level TEXT NOT NULL, trimester TEXT NOT NULL, subject TEXT NOT NULL,
+          teacher_first_name TEXT NOT NULL, teacher_last_name TEXT NOT NULL, exported_at TEXT NOT NULL,
+          imported_at TEXT NOT NULL, payload_json TEXT NOT NULL, is_elective INTEGER NOT NULL DEFAULT 0,
+          UNIQUE(report_id, subject)
+        );
+        INSERT INTO imported_worksheets_v2(id, report_id, course_level, trimester, subject, teacher_first_name, teacher_last_name, exported_at, imported_at, payload_json, is_elective)
+          SELECT i.id, r.id, i.course_level, i.trimester, i.subject, i.teacher_first_name, i.teacher_last_name, i.exported_at, i.imported_at, i.payload_json, i.is_elective
+          FROM imported_worksheets i JOIN tracking_reports r ON r.course_level=i.course_level AND r.trimester=i.trimester AND r.report_number=1;
+        DROP TABLE imported_worksheets;
+        ALTER TABLE imported_worksheets_v2 RENAME TO imported_worksheets;
+      `);
+    }
+    const observationInfo = this.db.prepare('PRAGMA table_info(tutor_observations)').all() as Row[];
+    if (!observationInfo.some(column => column.name === 'report_id')) {
+      this.db.exec(`
+        INSERT OR IGNORE INTO tracking_reports(course_level, trimester, report_number, created_at, updated_at)
+          SELECT course_level, trimester, 1, MIN(updated_at), MAX(updated_at) FROM tutor_observations GROUP BY course_level, trimester;
+        CREATE TABLE tutor_observations_v2 (
+          report_id INTEGER NOT NULL REFERENCES tracking_reports(id) ON DELETE CASCADE,
+          student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+          observation TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (report_id, student_id)
+        );
+        INSERT INTO tutor_observations_v2(report_id, student_id, observation, updated_at)
+          SELECT r.id, o.student_id, o.observation, o.updated_at FROM tutor_observations o
+          JOIN tracking_reports r ON r.course_level=o.course_level AND r.trimester=o.trimester AND r.report_number=1;
+        DROP TABLE tutor_observations;
+        ALTER TABLE tutor_observations_v2 RENAME TO tutor_observations;
+      `);
+    }
+    const profileInfo = this.db.prepare('PRAGMA table_info(teacher_profile)').all() as Row[];
+    if (!profileInfo.some(column => column.name === 'sex')) this.db.exec("ALTER TABLE teacher_profile ADD COLUMN sex TEXT NOT NULL DEFAULT 'MALE'");
+    for (const [legacy, current] of [['TRIMESTER_1', 'T_1'], ['TRIMESTER_2', 'T_2'], ['TRIMESTER_3', 'T_3']]) {
+      this.db.prepare('UPDATE worksheets SET trimester = ? WHERE trimester = ?').run(current, legacy);
+      this.db.prepare('UPDATE imported_worksheets SET trimester = ? WHERE trimester = ?').run(current, legacy);
+      this.db.prepare('UPDATE tracking_reports SET trimester = ? WHERE trimester = ?').run(current, legacy);
+    }
+    if ((this.db.prepare('SELECT COUNT(*) count FROM configured_courses').get() as Row).count === 0) {
+      const referenced = (this.db.prepare(`SELECT course_level FROM students UNION SELECT course_level FROM worksheets UNION SELECT course_level FROM imported_worksheets`).all() as Row[]).map(row => row.course_level as string);
+      const addCourse = this.db.prepare('INSERT INTO configured_courses(id, name, sort_order) VALUES (?, ?, ?)');
+      const addSubject = this.db.prepare('INSERT INTO configured_subjects(course_id, name, sort_order) VALUES (?, ?, ?)');
+      this.transaction(() => referenced.forEach((courseId, courseIndex) => {
+        addCourse.run(courseId, COURSE_LABELS[courseId] ?? courseId, courseIndex);
+        const used = (this.db.prepare('SELECT DISTINCT subject FROM worksheets WHERE course_level = ?').all(courseId) as Row[]).map(row => row.subject as string);
+        const subjects = [...new Set([...(SUBJECTS_BY_COURSE[courseId] ?? []), ...used])];
+        subjects.forEach((subject, subjectIndex) => addSubject.run(courseId, subject, subjectIndex));
+      }));
+    }
+    this.db.exec('PRAGMA optimize');
+  }
+
+  close() { this.db.close(); }
+  private now() { return new Date().toISOString(); }
+
+  getProfile(): TeacherProfile {
+    const row = this.db.prepare('SELECT first_name, last_name, sex FROM teacher_profile WHERE id = 1').get() as Row;
+    return { firstName: row.first_name, lastName: row.last_name, sex: row.sex === 'FEMALE' ? 'FEMALE' : 'MALE' };
+  }
+
+  saveProfile(profile: TeacherProfile): TeacherProfile {
+    this.db.prepare('UPDATE teacher_profile SET first_name = ?, last_name = ?, sex = ? WHERE id = 1')
+      .run(profile.firstName.trim(), profile.lastName.trim(), profile.sex === 'FEMALE' ? 'FEMALE' : 'MALE');
+    return this.getProfile();
+  }
+
+  getLanguage(): AppLanguage {
+    const value = (this.db.prepare('SELECT language FROM app_preferences WHERE id = 1').get() as Row).language;
+    return ['es', 'ca', 'en', 'eu', 'gl'].includes(value) ? value : 'es';
+  }
+
+  saveLanguage(language: AppLanguage): AppLanguage {
+    if (!['es', 'ca', 'en', 'eu', 'gl'].includes(language)) throw new Error('Idioma no válido.');
+    this.db.prepare('UPDATE app_preferences SET language = ? WHERE id = 1').run(language);
+    return language;
+  }
+
+  getSchoolLogo() { return (this.db.prepare('SELECT school_logo FROM app_preferences WHERE id = 1').get() as Row).school_logo as string; }
+  saveSchoolLogo(logo: string) { this.db.prepare('UPDATE app_preferences SET school_logo = ? WHERE id = 1').run(logo); }
+
+  listTutorObservations() {
+    const observations: Record<string, string> = {};
+    for (const row of this.db.prepare('SELECT report_id, student_id, observation FROM tutor_observations').all() as Row[]) {
+      observations[`${row.report_id}:${row.student_id}`] = row.observation;
+    }
+    return observations;
+  }
+
+  saveTutorObservation(reportId: number, studentId: number, observation: string) {
+    const report = this.db.prepare('SELECT course_level FROM tracking_reports WHERE id = ?').get(reportId) as Row | undefined;
+    if (!report) throw new Error('No se ha encontrado el informe.');
+    const student = this.db.prepare('SELECT course_level FROM students WHERE id = ?').get(studentId) as Row | undefined;
+    if (!student || student.course_level !== report.course_level) throw new Error('El alumno no pertenece al curso seleccionado.');
+    if (!observation.trim()) {
+      this.db.prepare('DELETE FROM tutor_observations WHERE report_id = ? AND student_id = ?').run(reportId, studentId);
+      return;
+    }
+    const now = this.now();
+    this.db.prepare(`INSERT INTO tutor_observations(report_id, student_id, observation, updated_at)
+      VALUES (?, ?, ?, ?) ON CONFLICT(report_id, student_id) DO UPDATE SET
+      observation=excluded.observation, updated_at=excluded.updated_at`).run(reportId, studentId, observation, now);
+    this.db.prepare('UPDATE tracking_reports SET updated_at = ? WHERE id = ?').run(now, reportId);
+  }
+
+  clearCenterData() {
+    this.transaction(() => {
+      this.db.exec('DELETE FROM tutor_observations');
+      this.db.exec('DELETE FROM imported_worksheets');
+      this.db.exec('DELETE FROM tracking_reports');
+      this.db.exec('DELETE FROM worksheets');
+      this.db.exec('DELETE FROM students');
+      this.db.exec('DELETE FROM configured_courses');
+    });
+  }
+
+  listCourses(): ConfiguredCourse[] {
+    return (this.db.prepare('SELECT id, name, sort_order FROM configured_courses ORDER BY sort_order, name').all() as Row[])
+      .map(row => ({ id: row.id, name: row.name, sortOrder: row.sort_order }));
+  }
+
+  listSubjects(courseId?: CourseLevel): ConfiguredSubject[] {
+    const sql = `SELECT course_id, name, sort_order FROM configured_subjects${courseId ? ' WHERE course_id = ?' : ''} ORDER BY course_id, sort_order, name`;
+    const rows = (courseId ? this.db.prepare(sql).all(courseId) : this.db.prepare(sql).all()) as Row[];
+    return rows.map(row => ({ courseId: row.course_id, name: row.name, sortOrder: row.sort_order }));
+  }
+
+  hasCourse(courseId: CourseLevel) { return Boolean(this.db.prepare('SELECT 1 FROM configured_courses WHERE id = ?').get(courseId)); }
+  hasSubject(courseId: CourseLevel, subject: string) { return Boolean(this.db.prepare('SELECT 1 FROM configured_subjects WHERE course_id = ? AND name = ?').get(courseId, subject)); }
+  courseName(courseId: CourseLevel) { return (this.db.prepare('SELECT name FROM configured_courses WHERE id = ?').get(courseId) as Row | undefined)?.name ?? courseId; }
+
+  replaceCourses(names: string[]): ConfiguredCourse[] {
+    const cleaned = [...new Map(names.map(name => name.trim()).filter(Boolean).map(name => [name.toLocaleLowerCase(), name])).values()];
+    if (!cleaned.length) throw new Error('El archivo no contiene cursos.');
+    const existing = this.listCourses();
+    const byName = new Map(existing.map(course => [course.name.toLocaleLowerCase(), course]));
+    const inUse = new Set((this.db.prepare(`SELECT course_level FROM students UNION SELECT course_level FROM worksheets UNION SELECT course_level FROM imported_worksheets`).all() as Row[]).map(row => row.course_level));
+    const retained = cleaned.map((name, index) => {
+      const defaultId = COURSE_LEVELS.find(courseId => COURSE_LABELS[courseId].toLocaleLowerCase() === name.toLocaleLowerCase());
+      return { id: byName.get(name.toLocaleLowerCase())?.id ?? defaultId ?? `course_${randomUUID()}`, name, sortOrder: index };
+    });
+    const retainedIds = new Set(retained.map(course => course.id));
+    const blocked = existing.filter(course => inUse.has(course.id) && !retainedIds.has(course.id));
+    if (blocked.length) throw new Error(`No se pueden eliminar cursos con datos: ${blocked.map(course => course.name).join(', ')}.`);
+    const upsert = this.db.prepare(`INSERT INTO configured_courses(id, name, sort_order) VALUES (?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET name=excluded.name, sort_order=excluded.sort_order`);
+    const remove = this.db.prepare('DELETE FROM configured_courses WHERE id = ?');
+    this.transaction(() => {
+      retained.forEach(course => upsert.run(course.id, course.name, course.sortOrder));
+      existing.filter(course => !retainedIds.has(course.id)).forEach(course => remove.run(course.id));
+    });
+    return this.listCourses();
+  }
+
+  replaceSubjectCatalog(entries: Array<{ course: string; subject: string }>): ConfiguredSubject[] {
+    const courses = this.listCourses();
+    const courseLookup = new Map(courses.flatMap(course => [[course.id.toLocaleLowerCase(), course.id], [course.name.toLocaleLowerCase(), course.id]]));
+    const grouped = new Map<string, string[]>();
+    for (const entry of entries) {
+      const courseId = courseLookup.get(entry.course.trim().toLocaleLowerCase());
+      if (!courseId) throw new Error(`El curso “${entry.course}” no está configurado.`);
+      const subject = entry.subject.trim(); if (!subject) continue;
+      const list = grouped.get(courseId) ?? [];
+      if (!list.some(item => item.toLocaleLowerCase() === subject.toLocaleLowerCase())) list.push(subject);
+      grouped.set(courseId, list);
+    }
+    if (!grouped.size) throw new Error('El archivo no contiene asignaturas.');
+    for (const [courseId, subjects] of grouped) {
+      const used = (this.db.prepare('SELECT DISTINCT subject FROM worksheets WHERE course_level = ?').all(courseId) as Row[]).map(row => row.subject as string);
+      const missing = used.filter(subject => !subjects.some(item => item.toLocaleLowerCase() === subject.toLocaleLowerCase()));
+      if (missing.length) throw new Error(`No se pueden eliminar asignaturas con hojas: ${missing.join(', ')}.`);
+    }
+    const remove = this.db.prepare('DELETE FROM configured_subjects WHERE course_id = ?');
+    const insert = this.db.prepare('INSERT INTO configured_subjects(course_id, name, sort_order) VALUES (?, ?, ?)');
+    this.transaction(() => grouped.forEach((subjects, courseId) => { remove.run(courseId); subjects.forEach((subject, index) => insert.run(courseId, subject, index)); }));
+    return this.listSubjects();
+  }
+
+  replaceCenterData(input: Array<{ name: string; subjects: string[]; students: string[] }>) {
+    const cleaned = input.map(course => ({ name: course.name.trim(), subjects: [...new Set(course.subjects.map(value => value.trim()).filter(Boolean))], students: [...new Set(course.students.map(value => value.trim()).filter(Boolean))] })).filter(course => course.name);
+    if (!cleaned.length) throw new Error('El archivo no contiene cursos.');
+    const existingCourses = this.listCourses(); const byName = new Map(existingCourses.map(course => [course.name.toLocaleLowerCase(), course]));
+    const resolved = cleaned.map((course, sortOrder) => {
+      const defaultId = COURSE_LEVELS.find(courseId => COURSE_LABELS[courseId].toLocaleLowerCase() === course.name.toLocaleLowerCase());
+      return { ...course, id: byName.get(course.name.toLocaleLowerCase())?.id ?? defaultId ?? `course_${randomUUID()}`, sortOrder };
+    });
+    const retainedIds = new Set(resolved.map(course => course.id));
+    const inUse = new Set((this.db.prepare(`SELECT course_level FROM students UNION SELECT course_level FROM worksheets UNION SELECT course_level FROM imported_worksheets`).all() as Row[]).map(row => row.course_level));
+    const blockedCourses = existingCourses.filter(course => inUse.has(course.id) && !retainedIds.has(course.id));
+    if (blockedCourses.length) throw new Error(`No se pueden eliminar cursos con datos: ${blockedCourses.map(course => course.name).join(', ')}.`);
+    for (const course of resolved) {
+      if (!course.subjects.length || !course.students.length) throw new Error(`El curso “${course.name}” debe incluir asignaturas y alumnos.`);
+      const usedSubjects = (this.db.prepare('SELECT DISTINCT subject FROM worksheets WHERE course_level = ?').all(course.id) as Row[]).map(row => row.subject as string);
+      const missing = usedSubjects.filter(subject => !course.subjects.some(item => item.toLocaleLowerCase() === subject.toLocaleLowerCase()));
+      if (missing.length) throw new Error(`No se pueden eliminar asignaturas con hojas: ${missing.join(', ')}.`);
+    }
+    const upsertCourse = this.db.prepare(`INSERT INTO configured_courses(id, name, sort_order) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, sort_order=excluded.sort_order`);
+    const removeCourse = this.db.prepare('DELETE FROM configured_courses WHERE id = ?'); const removeSubjects = this.db.prepare('DELETE FROM configured_subjects WHERE course_id = ?');
+    const addSubject = this.db.prepare('INSERT INTO configured_subjects(course_id, name, sort_order) VALUES (?, ?, ?)');
+    const updateStudentOrder = this.db.prepare('UPDATE students SET sort_order = ? WHERE id = ?'); const addStudent = this.db.prepare('INSERT INTO students(course_level, full_name, sort_order, created_at) VALUES (?, ?, ?, ?)'); const removeStudent = this.db.prepare('DELETE FROM students WHERE id = ?');
+    const existingStudents = new Map(resolved.map(course => [course.id, this.listStudents(course.id)]));
+    this.transaction(() => {
+      resolved.forEach(course => upsertCourse.run(course.id, course.name, course.sortOrder));
+      existingCourses.filter(course => !retainedIds.has(course.id)).forEach(course => removeCourse.run(course.id));
+      resolved.forEach(course => {
+        removeSubjects.run(course.id); course.subjects.forEach((subject, index) => addSubject.run(course.id, subject, index));
+        const available = (existingStudents.get(course.id) ?? []).reduce<Map<string, Student[]>>((map, student) => { const matches = map.get(student.fullName) ?? []; matches.push(student); map.set(student.fullName, matches); return map; }, new Map());
+        const retainedStudents = new Set<number>();
+        course.students.forEach((name, index) => { const match = available.get(name)?.shift(); if (match) { retainedStudents.add(match.id); updateStudentOrder.run(index, match.id); } else addStudent.run(course.id, name, index, this.now()); });
+        (existingStudents.get(course.id) ?? []).filter(student => !retainedStudents.has(student.id)).forEach(student => removeStudent.run(student.id));
+      });
+    });
+    return { courses: this.listCourses(), subjects: this.listSubjects(), students: this.listStudents() };
+  }
+
+  listStudents(courseLevel?: CourseLevel): Student[] {
+    const sql = `SELECT id, course_level, full_name, sort_order FROM students${courseLevel ? ' WHERE course_level = ?' : ''} ORDER BY course_level, sort_order, id`;
+    const rows = (courseLevel ? this.db.prepare(sql).all(courseLevel) : this.db.prepare(sql).all()) as Row[];
+    return rows.map(row => ({ id: row.id, courseLevel: row.course_level, fullName: row.full_name, sortOrder: row.sort_order }));
+  }
+
+  addStudent(courseLevel: CourseLevel, fullName: string): Student {
+    const name = fullName.trim();
+    if (!name) throw new Error('El nombre del alumno no puede estar vacío.');
+    const next = (this.db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 n FROM students WHERE course_level = ?').get(courseLevel) as Row).n;
+    const result = this.db.prepare('INSERT INTO students(course_level, full_name, sort_order, created_at) VALUES (?, ?, ?, ?)')
+      .run(courseLevel, name, next, this.now());
+    return this.listStudents(courseLevel).find(s => s.id === Number(result.lastInsertRowid))!;
+  }
+
+  updateStudent(id: number, fullName: string): Student {
+    const name = fullName.trim();
+    if (!name) throw new Error('El nombre del alumno no puede estar vacío.');
+    this.db.prepare('UPDATE students SET full_name = ? WHERE id = ?').run(name, id);
+    const row = this.db.prepare('SELECT id, course_level, full_name, sort_order FROM students WHERE id = ?').get(id) as Row | undefined;
+    if (!row) throw new Error('No se ha encontrado el alumno.');
+    return { id: row.id, courseLevel: row.course_level, fullName: row.full_name, sortOrder: row.sort_order };
+  }
+
+  deleteStudent(id: number) { this.db.prepare('DELETE FROM students WHERE id = ?').run(id); }
+
+  reorderStudents(courseLevel: CourseLevel, ids: number[]): Student[] {
+    const existing = this.listStudents(courseLevel).map(s => s.id);
+    if (existing.length !== ids.length || [...existing].sort().some((id, index) => id !== [...ids].sort()[index])) {
+      throw new Error('La lista de alumnos no coincide con el curso.');
+    }
+    const update = this.db.prepare('UPDATE students SET sort_order = ? WHERE id = ? AND course_level = ?');
+    this.transaction(() => ids.forEach((id, index) => update.run(index, id, courseLevel)));
+    return this.listStudents(courseLevel);
+  }
+
+  replaceCourseRoster(courseLevel: CourseLevel, names: string[]): Student[] {
+    const cleaned = names.map(name => name.trim()).filter(Boolean);
+    if (cleaned.length === 0) throw new Error('La lista debe contener al menos un alumno.');
+    const existing = this.listStudents(courseLevel);
+    const available = existing.reduce<Map<string, Student[]>>((map, student) => {
+      const entries = map.get(student.fullName) ?? [];
+      entries.push(student); map.set(student.fullName, entries); return map;
+    }, new Map());
+    const retained = new Set<number>();
+    const update = this.db.prepare('UPDATE students SET sort_order = ? WHERE id = ?');
+    const insert = this.db.prepare('INSERT INTO students(course_level, full_name, sort_order, created_at) VALUES (?, ?, ?, ?)');
+    const remove = this.db.prepare('DELETE FROM students WHERE id = ?');
+    this.transaction(() => {
+      cleaned.forEach((name, index) => {
+        const match = available.get(name)?.shift();
+        if (match) { retained.add(match.id); update.run(index, match.id); }
+        else insert.run(courseLevel, name, index, this.now());
+      });
+      existing.filter(student => !retained.has(student.id)).forEach(student => remove.run(student.id));
+    });
+    return this.listStudents(courseLevel);
+  }
+
+  listWorksheets(): WorksheetSummary[] {
+    return (this.db.prepare(`SELECT w.*,
+      (SELECT COUNT(*) FROM worksheet_columns c WHERE c.worksheet_id = w.id AND c.kind = 'EXAM') AS exam_count,
+      (SELECT COUNT(*) FROM worksheet_columns c WHERE c.worksheet_id = w.id AND c.kind = 'CONTINUOUS_ASSESSMENT') AS continuous_count,
+      CASE WHEN (SELECT COUNT(*) FROM students s WHERE s.course_level = w.course_level
+          AND (w.is_elective = 0 OR NOT EXISTS (SELECT 1 FROM worksheet_disabled_students d WHERE d.worksheet_id = w.id AND d.student_id = s.id))) > 0
+        AND (SELECT COUNT(*) FROM worksheet_columns c WHERE c.worksheet_id = w.id) > 0
+        AND (SELECT COUNT(*) FROM worksheet_values v WHERE v.worksheet_id = w.id
+          AND (w.is_elective = 0 OR NOT EXISTS (SELECT 1 FROM worksheet_disabled_students d WHERE d.worksheet_id = w.id AND d.student_id = v.student_id))
+          AND TRIM(v.value) <> ''
+          AND (w.grade_mode = 'LETTER' OR (
+            TRIM(v.value) NOT GLOB '*[^0-9.,]*'
+            AND REPLACE(TRIM(v.value), ',', '.') NOT IN ('.', '')
+            AND LENGTH(REPLACE(TRIM(v.value), ',', '.')) - LENGTH(REPLACE(REPLACE(TRIM(v.value), ',', '.'), '.', '')) <= 1
+            AND CAST(REPLACE(TRIM(v.value), ',', '.') AS REAL) BETWEEN 0 AND 10))) =
+          (SELECT COUNT(*) FROM students s WHERE s.course_level = w.course_level
+            AND (w.is_elective = 0 OR NOT EXISTS (SELECT 1 FROM worksheet_disabled_students d WHERE d.worksheet_id = w.id AND d.student_id = s.id)))
+          * (SELECT COUNT(*) FROM worksheet_columns c WHERE c.worksheet_id = w.id)
+      THEN 1 ELSE 0 END AS is_complete
+      FROM worksheets w ORDER BY w.course_level, w.trimester, w.subject`).all() as Row[]).map(this.mapWorksheet);
+  }
+
+  private mapWorksheet = (row: Row): WorksheetSummary => ({
+    id: row.id, courseLevel: row.course_level, trimester: row.trimester, subject: row.subject, gradeMode: row.grade_mode === 'LETTER' ? 'LETTER' : 'NUMERIC', isElective: Boolean(row.is_elective),
+    createdAt: row.created_at, updatedAt: row.updated_at, isComplete: Boolean(row.is_complete), examCount: Number(row.exam_count ?? 0), continuousAssessmentCount: Number(row.continuous_count ?? 0)
+  });
+
+  createWorksheet(input: { courseLevel: CourseLevel; trimester: Trimester; subject: string; gradeMode?: GradeMode; isElective?: boolean }): WorksheetSummary {
+    const now = this.now();
+    const gradeMode = input.gradeMode ?? 'NUMERIC';
+    if (!['NUMERIC', 'LETTER'].includes(gradeMode)) throw new Error('Tipo de nota no válido.');
+    try {
+      const result = this.db.prepare('INSERT INTO worksheets(course_level, trimester, subject, grade_mode, is_elective, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run(input.courseLevel, input.trimester, input.subject, gradeMode, input.isElective ? 1 : 0, now, now);
+      return this.listWorksheets().find(sheet => sheet.id === Number(result.lastInsertRowid))!;
+    } catch (error) {
+      if (String(error).includes('UNIQUE')) throw new Error('DUPLICATE_WORKSHEET', { cause: error });
+      throw error;
+    }
+  }
+
+  deleteWorksheet(id: number) { this.db.prepare('DELETE FROM worksheets WHERE id = ?').run(id); }
+
+  getWorksheet(id: number): WorksheetDetail {
+    const worksheet = this.db.prepare('SELECT * FROM worksheets WHERE id = ?').get(id) as Row | undefined;
+    if (!worksheet) throw new Error('No se ha encontrado la hoja.');
+    const columns = (this.db.prepare('SELECT * FROM worksheet_columns WHERE worksheet_id = ? ORDER BY sort_order, id').all(id) as Row[])
+      .map(row => ({ id: row.id, worksheetId: row.worksheet_id, exportId: row.export_id, name: row.name, kind: row.kind ?? 'CONTINUOUS_ASSESSMENT', assessmentDate: row.assessment_date ?? '', sortOrder: row.sort_order }));
+    const values: Record<string, string> = {};
+    const observations: Record<string, string> = {};
+    for (const row of this.db.prepare('SELECT student_id, column_id, value, observation FROM worksheet_values WHERE worksheet_id = ?').all(id) as Row[]) {
+      values[`${row.student_id}:${row.column_id}`] = row.value;
+      observations[`${row.student_id}:${row.column_id}`] = row.observation;
+    }
+    const summary = this.listWorksheets().find(item => item.id === id)!;
+    const disabledStudentIds = (this.db.prepare('SELECT student_id FROM worksheet_disabled_students WHERE worksheet_id = ? ORDER BY student_id').all(id) as Row[]).map(row => Number(row.student_id));
+    return { ...summary, students: this.listStudents(worksheet.course_level), columns, values, observations, disabledStudentIds };
+  }
+
+  configureElectiveStudents(worksheetId: number, enabledStudentIds: number[]): WorksheetDetail {
+    const worksheet = this.db.prepare('SELECT course_level, is_elective FROM worksheets WHERE id = ?').get(worksheetId) as Row | undefined;
+    if (!worksheet || !worksheet.is_elective) throw new Error('La asignatura no es optativa.');
+    const students = this.listStudents(worksheet.course_level);
+    const validIds = new Set(students.map(student => student.id));
+    const enabled = new Set(enabledStudentIds);
+    if (enabled.size === 0 || enabled.size !== enabledStudentIds.length || [...enabled].some(id => !Number.isInteger(id) || !validIds.has(id))) throw new Error('Selección de alumnado no válida.');
+    const disable = this.db.prepare('INSERT INTO worksheet_disabled_students(worksheet_id, student_id) VALUES (?, ?)');
+    this.transaction(() => {
+      this.db.prepare('DELETE FROM worksheet_disabled_students WHERE worksheet_id = ?').run(worksheetId);
+      students.filter(student => !enabled.has(student.id)).forEach(student => disable.run(worksheetId, student.id));
+      this.touch(worksheetId);
+    });
+    return this.getWorksheet(worksheetId);
+  }
+
+  addAssessment(worksheetId: number, kind: AssessmentKind, name: string, assessmentDate: string): WorksheetDetail {
+    const clean = name.trim();
+    if (!clean) throw new Error('El nombre de la columna no puede estar vacío.');
+    if (!['EXAM', 'CONTINUOUS_ASSESSMENT'].includes(kind)) throw new Error('Tipo de evaluación no válido.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(assessmentDate)) throw new Error('La fecha de realización no es válida.');
+    const next = (this.db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 n FROM worksheet_columns WHERE worksheet_id = ?').get(worksheetId) as Row).n;
+    this.db.prepare('INSERT INTO worksheet_columns(worksheet_id, export_id, name, kind, assessment_date, sort_order) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(worksheetId, `col_${randomUUID()}`, clean, kind, assessmentDate, next);
+    this.touch(worksheetId);
+    return this.getWorksheet(worksheetId);
+  }
+
+  updateAssessment(id: number, input: { kind: AssessmentKind; name: string; assessmentDate: string }) {
+    const clean = input.name.trim();
+    if (!clean || !['EXAM', 'CONTINUOUS_ASSESSMENT'].includes(input.kind) || !/^\d{4}-\d{2}-\d{2}$/.test(input.assessmentDate)) throw new Error('Datos de evaluación no válidos.');
+    const row = this.db.prepare('SELECT worksheet_id FROM worksheet_columns WHERE id = ?').get(id) as Row | undefined;
+    if (!row) throw new Error('No se ha encontrado la evaluación.');
+    this.db.prepare('UPDATE worksheet_columns SET name = ?, kind = ?, assessment_date = ? WHERE id = ?').run(clean, input.kind, input.assessmentDate, id);
+    this.touch(row.worksheet_id);
+  }
+
+  renameColumn(id: number, name: string) {
+    const clean = name.trim();
+    if (!clean) throw new Error('El nombre de la columna no puede estar vacío.');
+    const row = this.db.prepare('SELECT worksheet_id FROM worksheet_columns WHERE id = ?').get(id) as Row | undefined;
+    if (!row) throw new Error('No se ha encontrado la columna.');
+    this.db.prepare('UPDATE worksheet_columns SET name = ? WHERE id = ?').run(clean, id);
+    this.touch(row.worksheet_id);
+  }
+
+  deleteColumn(id: number) {
+    const row = this.db.prepare('SELECT worksheet_id FROM worksheet_columns WHERE id = ?').get(id) as Row | undefined;
+    if (row) { this.db.prepare('DELETE FROM worksheet_columns WHERE id = ?').run(id); this.touch(row.worksheet_id); }
+  }
+
+  saveCell(worksheetId: number, studentId: number, columnId: number, field: 'grade' | 'observation', value: string) {
+    if (!['grade', 'observation'].includes(field)) throw new Error('Campo de evaluación no válido.');
+    const current = this.db.prepare('SELECT value, observation FROM worksheet_values WHERE worksheet_id = ? AND student_id = ? AND column_id = ?')
+      .get(worksheetId, studentId, columnId) as Row | undefined;
+    const grade = field === 'grade' ? value : current?.value ?? '';
+    const observation = field === 'observation' ? value : current?.observation ?? '';
+    if (!grade && !observation) {
+      this.db.prepare('DELETE FROM worksheet_values WHERE worksheet_id = ? AND student_id = ? AND column_id = ?').run(worksheetId, studentId, columnId);
+    } else {
+      this.db.prepare(`INSERT INTO worksheet_values(worksheet_id, student_id, column_id, value, observation) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(worksheet_id, student_id, column_id) DO UPDATE SET value = excluded.value, observation = excluded.observation`)
+        .run(worksheetId, studentId, columnId, grade, observation);
+    }
+    this.touch(worksheetId);
+  }
+
+  clearAssessmentValues(worksheetId: number, columnId: number) {
+    this.db.prepare('DELETE FROM worksheet_values WHERE worksheet_id = ? AND column_id = ?').run(worksheetId, columnId);
+    this.touch(worksheetId);
+  }
+
+  private touch(id: number) { this.db.prepare('UPDATE worksheets SET updated_at = ? WHERE id = ?').run(this.now(), id); }
+
+  private transaction(action: () => void) {
+    this.db.exec('BEGIN');
+    try { action(); this.db.exec('COMMIT'); }
+    catch (error) { this.db.exec('ROLLBACK'); throw error; }
+  }
+
+  listTrackingReports(): TrackingReportSummary[] {
+    return (this.db.prepare('SELECT id, course_level, trimester, report_number, created_at, updated_at FROM tracking_reports ORDER BY course_level, trimester, report_number').all() as Row[])
+      .map(row => ({ id: row.id, courseLevel: row.course_level, trimester: row.trimester, sequence: row.report_number, createdAt: row.created_at, updatedAt: row.updated_at }));
+  }
+
+  getTrackingReport(id: number): TrackingReportSummary {
+    const report = this.listTrackingReports().find(item => item.id === id);
+    if (!report) throw new Error('No se ha encontrado el informe.');
+    return report;
+  }
+
+  private latestReport(courseLevel: CourseLevel, trimester: Trimester) {
+    return this.db.prepare('SELECT id, report_number FROM tracking_reports WHERE course_level = ? AND trimester = ? ORDER BY report_number DESC LIMIT 1').get(courseLevel, trimester) as Row | undefined;
+  }
+
+  private ensureLatestReport(courseLevel: CourseLevel, trimester: Trimester) {
+    const existing = this.latestReport(courseLevel, trimester);
+    if (existing) return Number(existing.id);
+    const now = this.now();
+    const result = this.db.prepare('INSERT INTO tracking_reports(course_level, trimester, report_number, created_at, updated_at) VALUES (?, ?, 1, ?, ?)').run(courseLevel, trimester, now, now);
+    return Number(result.lastInsertRowid);
+  }
+
+  listImports(reportId?: number): ImportedWorksheetSummary[] {
+    const sql = `SELECT id, report_id, course_level, trimester, subject, teacher_first_name, teacher_last_name, exported_at, imported_at, is_elective, payload_json FROM imported_worksheets${reportId === undefined ? '' : ' WHERE report_id = ?'} ORDER BY course_level, trimester, subject`;
+    return ((reportId === undefined ? this.db.prepare(sql).all() : this.db.prepare(sql).all(reportId)) as Row[]).map(this.mapImport);
+  }
+
+  private mapImport = (row: Row): ImportedWorksheetSummary => {
+    const payload = row.payload_json ? JSON.parse(row.payload_json) as FullSeguimentExport : null;
+    const enabledStudents = payload?.students.filter(student => student.enabled !== false) ?? [];
+    const gradeMode = payload?.subject.gradeMode ?? 'NUMERIC';
+    const gradedStudentNames = payload && payload.columns.length > 0
+      ? enabledStudents
+        .filter(student => payload.columns.every(column => isCompleteImportedGrade(student.values[column.id] ?? '', gradeMode)))
+        .map(student => student.name)
+      : [];
+    return {
+      id: row.id, reportId: row.report_id, courseLevel: row.course_level, trimester: row.trimester, subject: row.subject,
+      teacherFirstName: row.teacher_first_name, teacherLastName: row.teacher_last_name,
+      exportedAt: row.exported_at, importedAt: row.imported_at, isElective: Boolean(row.is_elective),
+      enabledStudentNames: enabledStudents.map(student => student.name), gradedStudentNames
+    };
+  };
+
+  hasImport(data: FullSeguimentExport): boolean {
+    const report = this.latestReport(data.course.level, data.trimester.id);
+    return Boolean(report && this.db.prepare('SELECT 1 FROM imported_worksheets WHERE report_id = ? AND subject = ?').get(report.id, data.subject.name));
+  }
+
+  saveImport(data: FullSeguimentExport, replace: boolean) {
+    const reportId = this.ensureLatestReport(data.course.level, data.trimester.id);
+    const now = this.now();
+    const args = [reportId, data.course.level, data.trimester.id, data.subject.name, data.teacher.firstName, data.teacher.lastName, data.exportedAt, now, JSON.stringify(data), data.subject.isElective ? 1 : 0];
+    if (replace) {
+      this.db.prepare(`INSERT INTO imported_worksheets(report_id, course_level, trimester, subject, teacher_first_name, teacher_last_name, exported_at, imported_at, payload_json, is_elective)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(report_id, subject) DO UPDATE SET
+        teacher_first_name=excluded.teacher_first_name, teacher_last_name=excluded.teacher_last_name,
+        exported_at=excluded.exported_at, imported_at=excluded.imported_at, payload_json=excluded.payload_json, is_elective=excluded.is_elective`).run(...args);
+    } else {
+      this.db.prepare(`INSERT INTO imported_worksheets(report_id, course_level, trimester, subject, teacher_first_name, teacher_last_name, exported_at, imported_at, payload_json, is_elective)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(...args);
+    }
+    this.db.prepare('UPDATE tracking_reports SET updated_at = ? WHERE id = ?').run(now, reportId);
+  }
+
+  getImportedWorksheet(id: number): ImportedWorksheetDetail {
+    const row = this.db.prepare('SELECT * FROM imported_worksheets WHERE id = ?').get(id) as Row | undefined;
+    if (!row) throw new Error('No se ha encontrado la entrega importada.');
+    const payload = JSON.parse(row.payload_json) as FullSeguimentExport;
+    const trimester = normalizeTrimester(payload.trimester?.id);
+    if (trimester) payload.trimester.id = trimester;
+    return { ...this.mapImport(row), payload };
+  }
+
+  deleteImportedWorksheet(id: number) {
+    const row = this.db.prepare('SELECT report_id FROM imported_worksheets WHERE id = ?').get(id) as Row | undefined;
+    if (!row) return;
+    this.db.prepare('DELETE FROM imported_worksheets WHERE id = ?').run(id);
+    if (!(this.db.prepare('SELECT 1 FROM imported_worksheets WHERE report_id = ?').get(row.report_id))) this.db.prepare('DELETE FROM tracking_reports WHERE id = ?').run(row.report_id);
+  }
+
+  copyTrackingReport(reportId: number): TrackingReportSummary {
+    const source = this.getTrackingReport(reportId);
+    if (Number(this.latestReport(source.courseLevel, source.trimester)?.id) !== reportId) throw new Error('ONLY_LATEST_REPORT_CAN_BE_COPIED');
+    const nextNumber = Number((this.db.prepare('SELECT COALESCE(MAX(report_number), 0) + 1 value FROM tracking_reports WHERE course_level = ? AND trimester = ?').get(source.courseLevel, source.trimester) as Row).value);
+    const now = this.now();
+    let newId = 0;
+    this.transaction(() => {
+      const result = this.db.prepare('INSERT INTO tracking_reports(course_level, trimester, report_number, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(source.courseLevel, source.trimester, nextNumber, now, now);
+      newId = Number(result.lastInsertRowid);
+      this.db.prepare(`INSERT INTO imported_worksheets(report_id, course_level, trimester, subject, teacher_first_name, teacher_last_name, exported_at, imported_at, payload_json, is_elective)
+        SELECT ?, course_level, trimester, subject, teacher_first_name, teacher_last_name, exported_at, ?, payload_json, is_elective FROM imported_worksheets WHERE report_id = ?`).run(newId, now, reportId);
+      this.db.prepare(`INSERT INTO tutor_observations(report_id, student_id, observation, updated_at)
+        SELECT ?, student_id, observation, ? FROM tutor_observations WHERE report_id = ?`).run(newId, now, reportId);
+    });
+    return this.getTrackingReport(newId);
+  }
+
+  deleteTrackingReport(reportId: number) {
+    this.db.prepare('DELETE FROM tracking_reports WHERE id = ?').run(reportId);
+  }
+
+  getInitialState(): InitialState {
+    return { profile: this.getProfile(), language: this.getLanguage(), schoolLogo: this.getSchoolLogo(), courses: this.listCourses(), subjects: this.listSubjects(), students: this.listStudents(), worksheets: this.listWorksheets(), trackingReports: this.listTrackingReports(), imports: this.listImports(), tutorObservations: this.listTutorObservations() };
+  }
+}
