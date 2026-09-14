@@ -87,6 +87,12 @@ Genera el instalador NSIS x64 para Windows:
 npm run dist:win
 ```
 
+Genera el instalador DMG para macOS:
+
+```bash
+npm run dist:mac
+```
+
 El instalador se escribe en `release/`.
 
 ## Aplicación de escritorio
@@ -203,6 +209,7 @@ edutrack/
 | `npm test` | Ejecuta la suite de Vitest. |
 | `npm run build` | Crea la compilación de producción del renderizador y Electron. |
 | `npm run dist:win` | Genera el instalador NSIS x64 de Windows. |
+| `npm run dist:mac` | Genera el instalador DMG de macOS. |
 
 ## Validación
 
