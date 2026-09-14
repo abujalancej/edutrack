@@ -41,7 +41,7 @@ export default function App() {
   const updateProfile = useCallback((profile: InitialState['profile']) => { const normalized = { ...profile, sex: profile.sex === 'FEMALE' ? 'FEMALE' as const : 'MALE' as const }; setActiveTeacherSex(normalized.sex); setState(current => ({ ...current, profile: normalized })); }, []);
   useEffect(() => { void window.fullSeguiment.getInitialState().then(next => { setState(next); setLanguage(next.language); setActiveLanguage(next.language); setActiveTeacherSex(next.profile.sex); }).finally(() => setLoading(false)); }, []);
   useEffect(() => { if (!loading && view.page === 'dashboard') void window.fullSeguiment.getInitialState().then(setState); }, [loading, mode, view.page]);
-  const notify = (next: Notice) => { setNotice(next); window.setTimeout(() => setNotice(null), 4200); };
+  const notify = useCallback((next: Notice) => { setNotice(next); window.setTimeout(() => setNotice(null), 4200); }, []);
   const changeMode = (next: AppMode) => { setMode(next); setView({ page: 'dashboard' }); };
   const changeLanguage = (next: AppLanguage) => { setActiveLanguage(next); setLanguage(next); setState(current => ({ ...current, language: next })); void window.fullSeguiment.saveLanguage(next); };
 
@@ -317,10 +317,10 @@ function Settings({ state, refresh, notify, onProfileChange }: { state: InitialS
   const [confirmingCenterImport, setConfirmingCenterImport] = useState(false);
   const hasCenterData = Boolean(state.courses.length || state.subjects.length || state.students.length || state.worksheets.length || state.imports.length);
   const latestProfile = useRef({ firstName: state.profile.firstName, lastName: state.profile.lastName, sex: state.profile.sex === 'FEMALE' ? 'FEMALE' as const : 'MALE' as const }); const profileTimer = useRef<number | null>(null); const profileDirty = useRef(false); const profileRevision = useRef(0);
-  const persistProfile = async (showNotice = true) => { if (profileTimer.current !== null) window.clearTimeout(profileTimer.current); profileTimer.current = null; if (!profileDirty.current) return; const revision = profileRevision.current; const saved = await window.fullSeguiment.saveProfile({ ...latestProfile.current }); if (profileRevision.current !== revision) return; profileDirty.current = false; onProfileChange(saved); if (showNotice) notify({ type: 'success', text: tr('profileSaved') }); };
+  const persistProfile = useCallback(async (showNotice = true) => { if (profileTimer.current !== null) window.clearTimeout(profileTimer.current); profileTimer.current = null; if (!profileDirty.current) return; const revision = profileRevision.current; const saved = await window.fullSeguiment.saveProfile({ ...latestProfile.current }); if (profileRevision.current !== revision) return; profileDirty.current = false; onProfileChange(saved); if (showNotice) notify({ type: 'success', text: tr('profileSaved') }); }, [notify, onProfileChange]);
   const changeProfile = (field: 'firstName' | 'lastName', value: string) => { if (field === 'firstName') setFirstName(value); else setLastName(value); latestProfile.current = { ...latestProfile.current, [field]: value }; profileDirty.current = true; profileRevision.current += 1; if (profileTimer.current !== null) window.clearTimeout(profileTimer.current); profileTimer.current = window.setTimeout(() => void persistProfile(), 350); };
   const changeSex = async (value: TeacherSex) => { setSex(value); latestProfile.current = { ...latestProfile.current, sex: value }; profileDirty.current = true; profileRevision.current += 1; await persistProfile(); };
-  useEffect(() => () => { void persistProfile(false); }, []);
+  useEffect(() => () => { void persistProfile(false); }, [persistProfile]);
   const loadCenterData = async () => {
     const result = await window.fullSeguiment.importCenterData(); if (result.cancelled) return;
     if (!result.ok) { notify({ type: 'error', text: result.error ?? tr('configurationImportError') }); return; }
