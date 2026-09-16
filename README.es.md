@@ -6,7 +6,7 @@
   <img src="public/app-icon.png" alt="Logo de EduTrack" width="220">
 </p>
 
-EduTrack `1.0.0` es una aplicación de escritorio local para la evaluación continua y el seguimiento del alumnado en Educación Secundaria.
+EduTrack `1.1.0` es una aplicación de escritorio local para la evaluación continua y el seguimiento del alumnado en Educación Secundaria.
 
 El profesorado registra las evaluaciones de cada asignatura y las exporta como archivos `.edutrack`. La tutoría importa esos archivos, completa la hoja de seguimiento más reciente de cada curso y trimestre y genera un PDF por alumno. No se necesita ningún servicio externo: los datos del centro permanecen en el equipo local.
 

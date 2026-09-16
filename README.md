@@ -6,7 +6,7 @@
   <img src="public/app-icon.png" alt="EduTrack logo" width="220">
 </p>
 
-EduTrack `1.0.0` is a local desktop application for continuous assessment and student progress tracking in secondary education.
+EduTrack `1.1.0` is a local desktop application for continuous assessment and student progress tracking in secondary education.
 
 Teachers record subject assessments and export them as `.edutrack` files. Tutors import those files, complete the latest tracking sheet for each course and term, and generate one PDF per student. No external service is required: school data stays on the local computer.
 
