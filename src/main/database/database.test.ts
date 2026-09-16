@@ -27,6 +27,16 @@ describe('AppDatabase', () => {
     expect(db.getWorksheet(maths.id).observations[`${anna.id}:${detail.columns[0].id}`]).toBe('Molt bona expressió escrita');
   });
 
+  it('normaliza las notas numéricas a mayúsculas antes de guardarlas', () => {
+    const pau = db.addStudent('ESO_1', 'Pau Soler');
+    const sheet = db.createWorksheet({ courseLevel: 'ESO_1', trimester: 'T_1', subject: 'Música', gradeMode: 'NUMERIC' });
+    const assessment = db.addAssessment(sheet.id, 'EXAM', 'Examen 1', '2026-09-12').columns[0];
+
+    db.saveCell(sheet.id, pau.id, assessment.id, 'grade', ' np ');
+
+    expect(db.getWorksheet(sheet.id).values[`${pau.id}:${assessment.id}`]).toBe('NP');
+  });
+
   it('impide combinaciones de hoja duplicadas', () => {
     const input = { courseLevel: 'ESO_1' as const, trimester: 'T_1' as const, subject: 'Música' };
     db.createWorksheet(input);
@@ -52,6 +62,17 @@ describe('AppDatabase', () => {
     const sheet = db.createWorksheet({ courseLevel: 'ESO_1', trimester: 'T_1', subject: 'Música' });
     db.addAssessment(sheet.id, 'EXAM', 'Examen 1', '2026-09-12');
     expect(() => buildExport(db, sheet.id)).toThrow('INCOMPLETE_WORKSHEET');
+  });
+
+  it.each(['NP', '-'])('permite exportar %s como valor especial sin nota numérica', value => {
+    db.saveProfile({ firstName: 'Marta', lastName: 'Serra' });
+    const pau = db.addStudent('ESO_1', 'Pau Soler');
+    const sheet = db.createWorksheet({ courseLevel: 'ESO_1', trimester: 'T_1', subject: 'Música' });
+    const assessment = db.addAssessment(sheet.id, 'EXAM', 'Examen 1', '2026-09-12').columns[0];
+    db.saveCell(sheet.id, pau.id, assessment.id, 'grade', value);
+
+    expect(db.listWorksheets().find(item => item.id === sheet.id)?.isComplete).toBe(true);
+    expect(buildExport(db, sheet.id).students[0].values[assessment.exportId]).toBe(value);
   });
 
   it('permite desactivar alumnado en una optativa y no exige sus notas', () => {
@@ -239,15 +260,16 @@ describe('AppDatabase', () => {
       columns: [{ id: 'exam', name: 'Examen' }, { id: 'project', name: 'Projecte' }],
       students: [
         { name: 'Anna', enabled: true, values: { exam: '8', project: '7' } },
-        { name: 'Pau', enabled: true, values: { exam: '6', project: '' } },
+        { name: 'Pau', enabled: true, values: { exam: '6', project: 'np' } },
         { name: 'Marc', enabled: false, values: { exam: '', project: '' } }
       ]
     };
     db.saveImport(delivery, false);
     expect(db.listImports()[0]).toMatchObject({
       enabledStudentNames: ['Anna', 'Pau'],
-      gradedStudentNames: ['Anna']
+      gradedStudentNames: ['Anna', 'Pau']
     });
+    expect(db.getImportedWorksheet(db.listImports()[0].id).payload.students[1].values.project).toBe('NP');
   });
 
   it('copia un informe y dirige las importaciones posteriores únicamente a la copia más reciente', () => {

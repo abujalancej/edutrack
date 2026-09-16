@@ -1,15 +1,24 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { COURSE_LABELS, COURSE_LEVELS, normalizeTrimester, SUBJECTS_BY_COURSE, type CourseLevel, type Trimester } from '../../shared/catalogs/catalogs';
+import { isCompleteGradeValue, normalizeGradeValue } from '../../shared/grades/grades';
 import type { AppLanguage, AssessmentKind, ConfiguredCourse, ConfiguredSubject, FullSeguimentExport, GradeMode, ImportedWorksheetDetail, ImportedWorksheetSummary, InitialState, Student, TeacherProfile, TrackingReportSummary, WorksheetDetail, WorksheetSummary } from '../../shared/types/models';
 
 type Row = Record<string, any>;
 
 const isCompleteImportedGrade = (value: string, mode: GradeMode) => {
-  if (mode === 'LETTER') return value.trim() !== '';
-  const normalized = value.trim().replace(',', '.');
-  const numeric = Number(normalized);
-  return normalized !== '' && /^\d{1,2}(\.\d{1,2})?$/.test(normalized) && numeric >= 0 && numeric <= 10;
+  return isCompleteGradeValue(value, mode);
+};
+
+const normalizeImportedNumericGrades = (data: FullSeguimentExport): FullSeguimentExport => {
+  if (data.subject.gradeMode !== 'NUMERIC') return data;
+  return {
+    ...data,
+    students: data.students.map(student => ({
+      ...student,
+      values: Object.fromEntries(Object.entries(student.values).map(([columnId, value]) => [columnId, normalizeGradeValue(value)]))
+    }))
+  };
 };
 
 export class AppDatabase {
@@ -386,7 +395,7 @@ export class AppDatabase {
         AND (SELECT COUNT(*) FROM worksheet_values v WHERE v.worksheet_id = w.id
           AND (w.is_elective = 0 OR NOT EXISTS (SELECT 1 FROM worksheet_disabled_students d WHERE d.worksheet_id = w.id AND d.student_id = v.student_id))
           AND TRIM(v.value) <> ''
-          AND (w.grade_mode = 'LETTER' OR (
+          AND (w.grade_mode = 'LETTER' OR UPPER(TRIM(v.value)) IN ('-', 'NP') OR (
             TRIM(v.value) NOT GLOB '*[^0-9.,]*'
             AND REPLACE(TRIM(v.value), ',', '.') NOT IN ('.', '')
             AND LENGTH(REPLACE(TRIM(v.value), ',', '.')) - LENGTH(REPLACE(REPLACE(TRIM(v.value), ',', '.'), '.', '')) <= 1
@@ -488,9 +497,11 @@ export class AppDatabase {
 
   saveCell(worksheetId: number, studentId: number, columnId: number, field: 'grade' | 'observation', value: string) {
     if (!['grade', 'observation'].includes(field)) throw new Error('Campo de evaluación no válido.');
+    const worksheet = this.db.prepare('SELECT grade_mode FROM worksheets WHERE id = ?').get(worksheetId) as Row | undefined;
+    if (!worksheet) throw new Error('No se ha encontrado la hoja.');
     const current = this.db.prepare('SELECT value, observation FROM worksheet_values WHERE worksheet_id = ? AND student_id = ? AND column_id = ?')
       .get(worksheetId, studentId, columnId) as Row | undefined;
-    const grade = field === 'grade' ? value : current?.value ?? '';
+    const grade = field === 'grade' ? worksheet.grade_mode === 'NUMERIC' ? normalizeGradeValue(value) : value : current?.value ?? '';
     const observation = field === 'observation' ? value : current?.observation ?? '';
     if (!grade && !observation) {
       this.db.prepare('DELETE FROM worksheet_values WHERE worksheet_id = ? AND student_id = ? AND column_id = ?').run(worksheetId, studentId, columnId);
@@ -566,9 +577,10 @@ export class AppDatabase {
   }
 
   saveImport(data: FullSeguimentExport, replace: boolean) {
-    const reportId = this.ensureLatestReport(data.course.level, data.trimester.id);
+    const normalizedData = normalizeImportedNumericGrades(data);
+    const reportId = this.ensureLatestReport(normalizedData.course.level, normalizedData.trimester.id);
     const now = this.now();
-    const args = [reportId, data.course.level, data.trimester.id, data.subject.name, data.teacher.firstName, data.teacher.lastName, data.exportedAt, now, JSON.stringify(data), data.subject.isElective ? 1 : 0];
+    const args = [reportId, normalizedData.course.level, normalizedData.trimester.id, normalizedData.subject.name, normalizedData.teacher.firstName, normalizedData.teacher.lastName, normalizedData.exportedAt, now, JSON.stringify(normalizedData), normalizedData.subject.isElective ? 1 : 0];
     if (replace) {
       this.db.prepare(`INSERT INTO imported_worksheets(report_id, course_level, trimester, subject, teacher_first_name, teacher_last_name, exported_at, imported_at, payload_json, is_elective)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(report_id, subject) DO UPDATE SET

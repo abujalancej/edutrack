@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TRIMESTERS, type CourseLevel, type Trimester } from '@shared/catalogs/catalogs';
+import { isCompleteGradeValue, normalizeGradeValue } from '@shared/grades/grades';
 import type { AppLanguage, AppMode, AssessmentKind, GradeMode, ImportedWorksheetDetail, ImportedWorksheetSummary, ImportAnalysis, InitialState, TeacherSex, TrackingReportSummary, WorksheetDetail, WorksheetSummary } from '@shared/types/models';
 import { Icon } from './components/Icon';
 import { LANGUAGES, LANGUAGE_LABELS, courseUi, getActiveLanguage, reportUi, setActiveLanguage, setActiveTeacherSex, subjectUi, tr, trimesterOptionUi, trimesterUi } from './i18n';
@@ -11,9 +12,13 @@ type Notice = { type: 'success' | 'error'; text: string } | null;
 type CellField = 'grade' | 'observation';
 type GridSelection = { start: { row: number; column: number }; end: { row: number; column: number } };
 const GRID_FIELDS: CellField[] = ['grade', 'observation'];
-const isValidGradeValue = (value: string) => { const normalized = value.trim().replace(',', '.'); const numeric = Number(normalized); return normalized !== '' && /^\d{1,2}(\.\d{1,2})?$/.test(normalized) && numeric >= 0 && numeric <= 10; };
-const isCompleteGradeValue = (value: string, mode: GradeMode) => mode === 'LETTER' ? value.trim() !== '' : isValidGradeValue(value);
-const importedGradeTone = (value: string, mode: GradeMode) => !value.trim() ? 'missing' : mode === 'LETTER' ? 'recorded' : Number(value.replace(',', '.')) >= 5 ? 'pass' : 'fail';
+const importedGradeTone = (value: string, mode: GradeMode) => {
+  const normalized = normalizeGradeValue(value);
+  if (!normalized) return 'missing';
+  if (mode === 'LETTER') return 'recorded';
+  if (normalized === '-') return 'special';
+  return normalized === 'NP' || Number(value.replace(',', '.')) < 5 ? 'fail' : 'pass';
+};
 const emptyState: InitialState = { profile: { firstName: '', lastName: '', sex: 'MALE' }, language: 'es', schoolLogo: '', courses: [], subjects: [], students: [], worksheets: [], imports: [], trackingReports: [], tutorObservations: {} };
 const courseName = (state: InitialState, id: string) => state.courses.find(course => course.id === id)?.name ?? courseUi(id);
 const courseSubjects = (state: InitialState, id: string) => state.subjects.filter(subject => subject.courseId === id).sort((a, b) => a.sortOrder - b.sortOrder).map(subject => subject.name);
@@ -185,7 +190,7 @@ function WorksheetPage({ id, navigate, refresh, notify, courses, profile }: { id
       const student = activeStudents[update.row]; const field = GRID_FIELDS[update.column];
       if (!student || !field) continue;
       const key = `${student.id}:${activeAssessment.id}`;
-      const value = field === 'grade' && sheet.gradeMode === 'LETTER' ? update.value.toLocaleUpperCase().slice(0, 12) : update.value;
+      const value = field === 'grade' ? sheet.gradeMode === 'NUMERIC' ? normalizeGradeValue(update.value) : update.value.toLocaleUpperCase().slice(0, 12) : update.value;
       if (field === 'grade') values[key] = value; else observations[key] = value;
       saves.push(window.fullSeguiment.saveCell(id, student.id, activeAssessment.id, field, value));
     }
@@ -275,12 +280,13 @@ function CellEditor({ worksheetId, studentId, columnId, initialValue, label, fie
   const save = (next: string) => { if (timer.current !== null) window.clearTimeout(timer.current); timer.current = null; void window.fullSeguiment.saveCell(worksheetId, studentId, columnId, field, next); };
   useEffect(() => { latestValue.current = initialValue; }, [initialValue]);
   useEffect(() => () => { if (timer.current !== null) { window.clearTimeout(timer.current); void window.fullSeguiment.saveCell(worksheetId, studentId, columnId, field, latestValue.current); } }, [columnId, field, studentId, worksheetId]);
-  const common = { value: initialValue, 'aria-label': label, onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { const raw = event.target.value; const next = field === 'grade' && gradeMode === 'LETTER' ? raw.toLocaleUpperCase().slice(0, 12) : raw; latestValue.current = next; onValueChange(next); if (timer.current !== null) window.clearTimeout(timer.current); timer.current = window.setTimeout(() => save(next), 350); }, onBlur: () => save(initialValue) };
+  const common = { value: initialValue, 'aria-label': label, onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { const raw = event.target.value; const next = field === 'grade' ? gradeMode === 'NUMERIC' ? normalizeGradeValue(raw) : raw.toLocaleUpperCase().slice(0, 12) : raw; latestValue.current = next; onValueChange(next); if (timer.current !== null) window.clearTimeout(timer.current); timer.current = window.setTimeout(() => save(next), 350); }, onBlur: () => save(initialValue) };
   const gradeMissing = initialValue.trim() === '';
-  const numericGrade = Number(initialValue.replace(',', '.')); const validGrade = !gradeMissing && /^\d{1,2}([.,]\d{1,2})?$/.test(initialValue) && numericGrade <= 10;
-  const gradeClass = gradeMissing ? 'grade-missing' : validGrade && numericGrade >= 5 ? 'grade-pass' : 'grade-fail';
+  const normalizedGrade = normalizeGradeValue(initialValue);
+  const numericGrade = Number(initialValue.replace(',', '.')); const validGrade = isCompleteGradeValue(initialValue, gradeMode);
+  const gradeClass = gradeMissing ? 'grade-missing' : normalizedGrade === '-' ? 'grade-special' : validGrade && numericGrade >= 5 ? 'grade-pass' : 'grade-fail';
   if (field === 'grade' && gradeMode === 'LETTER') return <input {...common} className={`grade-letter ${gradeMissing ? 'grade-missing' : ''}`} type="text" maxLength={12} spellCheck={false} autoCapitalize="characters" aria-invalid={gradeMissing} />;
-  return field === 'grade' ? <input {...common} className={gradeClass} type="number" min="0" max="10" step="0.01" inputMode="decimal" aria-invalid={!validGrade} /> : <textarea {...common} rows={1} placeholder={tr('observationPlaceholder')} />;
+  return field === 'grade' ? <input {...common} className={gradeClass} type="text" maxLength={12} inputMode="decimal" spellCheck={false} autoCapitalize="characters" aria-invalid={!validGrade} /> : <textarea {...common} rows={1} placeholder={tr('observationPlaceholder')} />;
 }
 
 function AssessmentModal({ initial, close, onSave }: { initial?: WorksheetDetail['columns'][number]; close: () => void; onSave: (input: { kind: AssessmentKind; name: string; assessmentDate: string }) => Promise<void> }) {

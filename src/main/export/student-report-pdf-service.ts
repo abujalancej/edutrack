@@ -53,7 +53,8 @@ const tutorObservationLabel = (language: AppLanguage, sex?: TeacherProfile['sex'
 const kindName = (labels: Labels, kind?: AssessmentKind) => kind === 'EXAM' ? labels.exam : kind === 'CONTINUOUS_ASSESSMENT' ? labels.continuous : '—';
 const gradeTone = (value: string) => {
   const normalized = value.trim().toLocaleUpperCase();
-  if (!normalized) return 'grade-empty';
+  if (!normalized || normalized === '-') return 'grade-empty';
+  if (normalized === 'NP') return 'grade-red';
   const numeric = Number(normalized.replace(',', '.'));
   if (/^\d{1,2}(?:[.,]\d{1,2})?$/.test(normalized) && numeric <= 5) return 'grade-red';
   if (/^N\s*[/.-]?\s*A(?:[-+].*)?$/.test(normalized)) return 'grade-red';

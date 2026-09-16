@@ -131,6 +131,7 @@ body { min-width: 720px; }
 .imported-grade { min-height: 32px; padding: 5px 7px; display: grid; place-items: center; border-radius: 8px; font-size: 14px; }
 .imported-grade.pass, .imported-grade.recorded { background: #e0f3e9; color: #1d775b; }
 .imported-grade.fail { background: #fbe8e7; color: #aa4141; }
+.imported-grade.special { background: #f0f2f1; color: #687570; }
 .imported-grade.missing { background: #f0f2f1; color: #87928e; }
 .imported-result-cell p { margin: 0; color: #53635e; font-size: 13px; line-height: 1.35; white-space: pre-wrap; }
 .imported-delivery-table tr.student-disabled { opacity: .52; }
@@ -315,6 +316,7 @@ body { min-width: 720px; }
 .assessment-table input[aria-invalid="true"] { color: var(--red); background: #fff6f5; box-shadow: inset 0 0 0 1px #e7a7a1; }
 .assessment-table input.grade-pass { color: #176c50; background: #eaf7f0; }
 .assessment-table input.grade-fail { color: #a13f3f; background: #fff0ef; }
+.assessment-table input.grade-special { color: #687570; background: #f0f2f1; }
 .assessment-table input.grade-letter { color: #314f63; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; }
 .assessment-table .grade-incomplete { background: #fff8e9; }
 .assessment-table .grade-incomplete input { background: #fff8e9; }

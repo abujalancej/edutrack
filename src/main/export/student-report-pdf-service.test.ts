@@ -66,4 +66,13 @@ describe('student report PDF content', () => {
     expect(html).toContain('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;');
     expect(html).not.toContain('<script>alert');
   });
+
+  it('presenta NP y guion como valores especiales', () => {
+    const special = structuredClone(report);
+    special.students[0].subjects[0].values['exam-1'] = 'NP';
+    special.students[0].subjects[0].values['activity-1'] = '-';
+    const html = buildStudentReportHtml(special, 0);
+    expect(html).toContain('>NP</td>');
+    expect(html).toContain('>-</td>');
+  });
 });
