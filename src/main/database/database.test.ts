@@ -230,6 +230,26 @@ describe('AppDatabase', () => {
     expect(db.listTutorObservations()[`${reportId}:${student.id}`]).toBeUndefined();
   });
 
+  it('permite excluir una entrega del informe sin borrarla', () => {
+    const student = db.addStudent('ESO_1', 'Pau Soler');
+    const delivery = (subject: string): FullSeguimentExport => ({
+      format: 'full-seguiment', version: 1, exportedAt: '2026-09-13T10:00:00.000Z',
+      teacher: { firstName: 'Marta', lastName: 'Serra' },
+      course: { level: 'ESO_1', name: '1r ESO' }, trimester: { id: 'T_1', name: '1r Trimestre' },
+      subject: { name: subject, gradeMode: 'NUMERIC' }, columns: [{ id: 'exam', name: 'Examen' }],
+      students: [{ name: student.fullName, values: { exam: '8' } }]
+    });
+    db.saveImport(delivery('Llengua Castellana'), false);
+    db.saveImport(delivery('Música'), false);
+    const reportId = db.listTrackingReports()[0].id;
+    const excluded = db.listImports(reportId).find(item => item.subject === 'Música')!;
+
+    expect(excluded.isBlocking).toBe(true);
+    expect(db.setImportedWorksheetBlocking(excluded.id, false)).toMatchObject({ isBlocking: false });
+    expect(buildTrackingReports(db, reportId).subjects.map(subject => subject.name)).toEqual(['Llengua Castellana']);
+    expect(db.listImports(reportId).find(item => item.id === excluded.id)?.isBlocking).toBe(false);
+  });
+
   it('mantiene las asignaturas optativas separadas en el informe', () => {
     const anna = db.addStudent('ESO_1', 'Anna');
     const pau = db.addStudent('ESO_1', 'Pau');

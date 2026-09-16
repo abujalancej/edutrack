@@ -144,6 +144,10 @@ export function registerIpc(db: AppDatabase) {
     return { ok: true, replaced };
   });
   ipcMain.handle('import:get', (_e, id) => db.getImportedWorksheet(id));
+  ipcMain.handle('import:blocking', (_e, id, isBlocking) => {
+    if (!Number.isInteger(id) || id <= 0 || typeof isBlocking !== 'boolean') throw new Error('Entrega no válida.');
+    return db.setImportedWorksheetBlocking(id, isBlocking);
+  });
   ipcMain.handle('import:delete', (_e, id) => { if (!Number.isInteger(id) || id <= 0) throw new Error('Entrega no válida.'); db.deleteImportedWorksheet(id); });
   ipcMain.handle('tutor-observation:save', (_e, reportId, studentId, observation) => {
     if (!Number.isInteger(reportId) || reportId <= 0 || !Number.isInteger(studentId) || typeof observation !== 'string' || observation.length > 5000) throw new Error('Observación del tutor no válida.');

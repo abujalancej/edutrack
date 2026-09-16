@@ -1,6 +1,6 @@
 import type { CourseLevel, Trimester } from '../catalogs/catalogs';
 import type { AssessmentKind, GradeMode } from './models';
-import type { AppLanguage, ConfiguredCourse, ConfiguredSubject, FullSeguimentExport, ImportedWorksheetDetail, ImportAnalysis, InitialState, RosterFileAnalysis, Student, TeacherProfile, TrackingReportSummary, WorksheetDetail, WorksheetSummary } from './models';
+import type { AppLanguage, ConfiguredCourse, ConfiguredSubject, FullSeguimentExport, ImportedWorksheetDetail, ImportedWorksheetSummary, ImportAnalysis, InitialState, RosterFileAnalysis, Student, TeacherProfile, TrackingReportSummary, WorksheetDetail, WorksheetSummary } from './models';
 
 export interface OperationResult { ok: boolean; code?: string; error?: string; replaced?: boolean; count?: number }
 
@@ -37,6 +37,7 @@ export interface FullSeguimentApi {
   analyzeImports(paths: string[]): Promise<ImportAnalysis[]>;
   commitImport(data: FullSeguimentExport): Promise<OperationResult>;
   getImportedWorksheet(id: number): Promise<ImportedWorksheetDetail>;
+  setImportedWorksheetBlocking(id: number, isBlocking: boolean): Promise<ImportedWorksheetSummary>;
   deleteImportedWorksheet(id: number): Promise<void>;
   saveTutorObservation(reportId: number, studentId: number, observation: string): Promise<void>;
   copyTrackingReport(reportId: number): Promise<TrackingReportSummary>;

@@ -85,7 +85,7 @@ export class AppDatabase {
         id INTEGER PRIMARY KEY AUTOINCREMENT, report_id INTEGER NOT NULL REFERENCES tracking_reports(id) ON DELETE CASCADE,
         course_level TEXT NOT NULL, trimester TEXT NOT NULL, subject TEXT NOT NULL,
         teacher_first_name TEXT NOT NULL, teacher_last_name TEXT NOT NULL, exported_at TEXT NOT NULL,
-        imported_at TEXT NOT NULL, payload_json TEXT NOT NULL, is_elective INTEGER NOT NULL DEFAULT 0,
+        imported_at TEXT NOT NULL, payload_json TEXT NOT NULL, is_elective INTEGER NOT NULL DEFAULT 0, is_blocking INTEGER NOT NULL DEFAULT 1,
         UNIQUE(report_id, subject)
       );
       CREATE TABLE IF NOT EXISTS tutor_observations (
@@ -108,6 +108,7 @@ export class AppDatabase {
     if (!worksheetInfo.some(column => column.name === 'is_elective')) this.db.exec('ALTER TABLE worksheets ADD COLUMN is_elective INTEGER NOT NULL DEFAULT 0');
     let importInfo = this.db.prepare('PRAGMA table_info(imported_worksheets)').all() as Row[];
     if (!importInfo.some(column => column.name === 'is_elective')) { this.db.exec('ALTER TABLE imported_worksheets ADD COLUMN is_elective INTEGER NOT NULL DEFAULT 0'); importInfo = this.db.prepare('PRAGMA table_info(imported_worksheets)').all() as Row[]; }
+    if (!importInfo.some(column => column.name === 'is_blocking')) { this.db.exec('ALTER TABLE imported_worksheets ADD COLUMN is_blocking INTEGER NOT NULL DEFAULT 1'); importInfo = this.db.prepare('PRAGMA table_info(imported_worksheets)').all() as Row[]; }
     if (!importInfo.some(column => column.name === 'report_id')) {
       this.db.exec(`
         INSERT OR IGNORE INTO tracking_reports(course_level, trimester, report_number, created_at, updated_at)
@@ -116,11 +117,11 @@ export class AppDatabase {
           id INTEGER PRIMARY KEY AUTOINCREMENT, report_id INTEGER NOT NULL REFERENCES tracking_reports(id) ON DELETE CASCADE,
           course_level TEXT NOT NULL, trimester TEXT NOT NULL, subject TEXT NOT NULL,
           teacher_first_name TEXT NOT NULL, teacher_last_name TEXT NOT NULL, exported_at TEXT NOT NULL,
-          imported_at TEXT NOT NULL, payload_json TEXT NOT NULL, is_elective INTEGER NOT NULL DEFAULT 0,
+          imported_at TEXT NOT NULL, payload_json TEXT NOT NULL, is_elective INTEGER NOT NULL DEFAULT 0, is_blocking INTEGER NOT NULL DEFAULT 1,
           UNIQUE(report_id, subject)
         );
-        INSERT INTO imported_worksheets_v2(id, report_id, course_level, trimester, subject, teacher_first_name, teacher_last_name, exported_at, imported_at, payload_json, is_elective)
-          SELECT i.id, r.id, i.course_level, i.trimester, i.subject, i.teacher_first_name, i.teacher_last_name, i.exported_at, i.imported_at, i.payload_json, i.is_elective
+        INSERT INTO imported_worksheets_v2(id, report_id, course_level, trimester, subject, teacher_first_name, teacher_last_name, exported_at, imported_at, payload_json, is_elective, is_blocking)
+          SELECT i.id, r.id, i.course_level, i.trimester, i.subject, i.teacher_first_name, i.teacher_last_name, i.exported_at, i.imported_at, i.payload_json, i.is_elective, i.is_blocking
           FROM imported_worksheets i JOIN tracking_reports r ON r.course_level=i.course_level AND r.trimester=i.trimester AND r.report_number=1;
         DROP TABLE imported_worksheets;
         ALTER TABLE imported_worksheets_v2 RENAME TO imported_worksheets;
@@ -550,7 +551,7 @@ export class AppDatabase {
   }
 
   listImports(reportId?: number): ImportedWorksheetSummary[] {
-    const sql = `SELECT id, report_id, course_level, trimester, subject, teacher_first_name, teacher_last_name, exported_at, imported_at, is_elective, payload_json FROM imported_worksheets${reportId === undefined ? '' : ' WHERE report_id = ?'} ORDER BY course_level, trimester, subject`;
+    const sql = `SELECT id, report_id, course_level, trimester, subject, teacher_first_name, teacher_last_name, exported_at, imported_at, is_elective, is_blocking, payload_json FROM imported_worksheets${reportId === undefined ? '' : ' WHERE report_id = ?'} ORDER BY course_level, trimester, subject`;
     return ((reportId === undefined ? this.db.prepare(sql).all() : this.db.prepare(sql).all(reportId)) as Row[]).map(this.mapImport);
   }
 
@@ -567,7 +568,7 @@ export class AppDatabase {
       id: row.id, reportId: row.report_id, courseLevel: row.course_level, trimester: row.trimester, subject: row.subject,
       teacherFirstName: row.teacher_first_name, teacherLastName: row.teacher_last_name,
       exportedAt: row.exported_at, importedAt: row.imported_at, isElective: Boolean(row.is_elective),
-      enabledStudentNames: enabledStudents.map(student => student.name), gradedStudentNames
+      enabledStudentNames: enabledStudents.map(student => student.name), gradedStudentNames, isBlocking: row.is_blocking !== 0
     };
   };
 
@@ -591,6 +592,15 @@ export class AppDatabase {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(...args);
     }
     this.db.prepare('UPDATE tracking_reports SET updated_at = ? WHERE id = ?').run(now, reportId);
+  }
+
+  setImportedWorksheetBlocking(id: number, isBlocking: boolean) {
+    const row = this.db.prepare('SELECT report_id FROM imported_worksheets WHERE id = ?').get(id) as Row | undefined;
+    if (!row) throw new Error('No se ha encontrado la entrega importada.');
+    const now = this.now();
+    this.db.prepare('UPDATE imported_worksheets SET is_blocking = ? WHERE id = ?').run(isBlocking ? 1 : 0, id);
+    this.db.prepare('UPDATE tracking_reports SET updated_at = ? WHERE id = ?').run(now, row.report_id);
+    return this.listImports(row.report_id).find(item => item.id === id)!;
   }
 
   getImportedWorksheet(id: number): ImportedWorksheetDetail {
@@ -618,8 +628,8 @@ export class AppDatabase {
     this.transaction(() => {
       const result = this.db.prepare('INSERT INTO tracking_reports(course_level, trimester, report_number, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(source.courseLevel, source.trimester, nextNumber, now, now);
       newId = Number(result.lastInsertRowid);
-      this.db.prepare(`INSERT INTO imported_worksheets(report_id, course_level, trimester, subject, teacher_first_name, teacher_last_name, exported_at, imported_at, payload_json, is_elective)
-        SELECT ?, course_level, trimester, subject, teacher_first_name, teacher_last_name, exported_at, ?, payload_json, is_elective FROM imported_worksheets WHERE report_id = ?`).run(newId, now, reportId);
+      this.db.prepare(`INSERT INTO imported_worksheets(report_id, course_level, trimester, subject, teacher_first_name, teacher_last_name, exported_at, imported_at, payload_json, is_elective, is_blocking)
+        SELECT ?, course_level, trimester, subject, teacher_first_name, teacher_last_name, exported_at, ?, payload_json, is_elective, is_blocking FROM imported_worksheets WHERE report_id = ?`).run(newId, now, reportId);
       this.db.prepare(`INSERT INTO tutor_observations(report_id, student_id, observation, updated_at)
         SELECT ?, student_id, observation, ? FROM tutor_observations WHERE report_id = ?`).run(newId, now, reportId);
     });

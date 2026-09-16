@@ -10,6 +10,7 @@ export function buildTrackingReports(db: AppDatabase, reportId: number): Trackin
   if (!isCourseLevel(courseLevel) || !isTrimester(trimester) || !db.hasCourse(courseLevel)) throw new Error('INVALID_REPORT_SELECTION');
 
   const imported = db.listImports(reportId)
+    .filter(item => item.isBlocking)
     .map(item => db.getImportedWorksheet(item.id));
   // Una optativa es una asignatura normal con un subconjunto de alumnado.
   // No se agrupan entregas ni se infiere una asignatura llamada «Optativa».

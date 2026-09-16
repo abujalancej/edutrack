@@ -35,7 +35,7 @@ export interface TrackingReportSummary {
 export interface ImportedWorksheetSummary {
   id: number; reportId: number; courseLevel: CourseLevel; trimester: Trimester; subject: string;
   teacherFirstName: string; teacherLastName: string; exportedAt: string; importedAt: string; isElective: boolean; enabledStudentNames: string[];
-  gradedStudentNames: string[];
+  gradedStudentNames: string[]; isBlocking: boolean;
 }
 export interface ImportedWorksheetDetail extends ImportedWorksheetSummary { payload: FullSeguimentExport }
 export interface TrackingReportsExport {

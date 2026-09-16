@@ -241,16 +241,21 @@ body { min-width: 720px; }
 .subject-status-list strong { grid-column: 2; grid-row: 1; align-self: end; line-height: 1.2; }
 .subject-status-list small { grid-column: 2; grid-row: 2; align-self: start; line-height: 1.2; }
 .subject-status-list button.received .status-icon { background: #dff3e9; color: #187458; box-shadow: inset 0 0 0 1px #acd8c6; }
+.subject-status-list button.subject-status-main.excluded .status-icon { background: #f0f2f1; color: #687570; box-shadow: inset 0 0 0 1px #d7dfdb; }
 .subject-status-list button.partial .status-icon { background: #fff0d6; color: #91691e; box-shadow: inset 0 0 0 1px #ead19a; }
 .subject-status-list button:not(.received):not(.partial) .status-icon { background: #fbe8e7; color: #b44747; box-shadow: inset 0 0 0 1px #edc3c0; }
 .subject-status-list button:not(.received) strong { color: #52635e; }
-.subject-status-item { min-height: 62px; display: grid; grid-template-columns: minmax(0, 1fr) 40px 40px; align-items: center; padding-right: 8px; border-bottom: 1px solid #edf0ee; }
+.subject-status-item { min-height: 62px; display: grid; grid-template-columns: minmax(0, 1fr) 40px 40px 40px; align-items: center; padding-right: 8px; border-bottom: 1px solid #edf0ee; }
 .subject-status-item:nth-child(odd) { border-right: 1px solid #edf0ee; }
 .subject-status-main { width: 100%; }
 .subject-status-list .sheet-card-icon-action { width: 34px; height: 34px; min-height: 34px; padding: 5px; border: 0; border-radius: 5px; display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr; place-items: center; justify-self: center; }
 .subject-status-list .sheet-card-icon-action:nth-child(odd) { border-right: 0; }
 .subject-status-list .delivery-view { color: var(--green); }
 .subject-status-list .delivery-view:hover { background: #edf2ef; color: var(--green-dark); }
+.subject-status-list .delivery-blocking-toggle.is-blocking { color: var(--green); }
+.subject-status-list .delivery-blocking-toggle.is-blocking:hover { background: #e4f4ed; color: var(--green-dark); }
+.subject-status-list .delivery-blocking-toggle.is-excluded { color: #8b9692; }
+.subject-status-list .delivery-blocking-toggle.is-excluded:hover { background: #f0f2f1; color: #596762; }
 .subject-status-list .delivery-delete { margin-left: 2px; color: #83908c; }
 .subject-status-list .delivery-view:disabled, .subject-status-list .delivery-delete:disabled { background: transparent; color: #c8cfcc; cursor: not-allowed; }
 @media (max-width: 1120px) {
@@ -263,6 +268,7 @@ body { min-width: 720px; }
 .tutor-observations-panel > header { margin-bottom: 14px; }
 .tutor-observations-panel h3 { margin: 0 0 4px; color: var(--green); font-size: 16px; letter-spacing: .7px; }
 .tutor-observations-panel p { margin: 0; color: var(--muted); font-size: 14px; }
+.imported-delivery-excluded { height: 120px !important; padding: 30px !important; color: #667570; background: #f8faf9 !important; font-size: 13px; font-weight: 600; text-align: center; }
 .tutor-observation-table-wrap { max-height: 420px; border-radius: 9px; box-shadow: none; }
 .tutor-observation-table { min-width: 640px; table-layout: fixed; }
 .tutor-observation-table th.student-column { width: 36%; }
