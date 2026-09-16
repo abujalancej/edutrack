@@ -1,8 +1,8 @@
 import type { CourseLevel, Trimester } from '../catalogs/catalogs';
 import type { AssessmentKind, GradeMode } from './models';
-import type { AppLanguage, CenterConfiguration, ConfiguredCourse, ConfiguredSubject, FullSeguimentExport, ImportedWorksheetDetail, ImportedWorksheetSummary, ImportAnalysis, InitialState, RosterFileAnalysis, Student, TeacherProfile, TrackingReportSummary, WorksheetDetail, WorksheetSummary } from './models';
+import type { AppLanguage, CenterConfiguration, ConfiguredCourse, ConfiguredSubject, FullSeguimentExport, ImportedWorksheetDetail, ImportedWorksheetSummary, ImportAnalysis, InitialState, RosterFileAnalysis, Student, TeacherProfile, TrackingReportSummary, WorksheetDetail, WorksheetFileAnalysis, WorksheetSummary } from './models';
 
-export interface OperationResult { ok: boolean; code?: string; error?: string; replaced?: boolean; count?: number }
+export interface OperationResult { ok: boolean; code?: string; error?: string; replaced?: boolean; count?: number; worksheetId?: number }
 
 export interface FullSeguimentApi {
   getInitialState(): Promise<InitialState>;
@@ -33,6 +33,8 @@ export interface FullSeguimentApi {
   saveCell(worksheetId: number, studentId: number, columnId: number, field: 'grade' | 'observation', value: string): Promise<void>;
   clearAssessmentValues(worksheetId: number, columnId: number): Promise<void>;
   exportWorksheet(id: number): Promise<OperationResult>;
+  chooseWorksheetImport(): Promise<WorksheetFileAnalysis>;
+  commitWorksheetImport(data: FullSeguimentExport, replace: boolean): Promise<OperationResult>;
   chooseImportFiles(): Promise<string[]>;
   getDroppedFilePath(file: File): string;
   analyzeImports(paths: string[]): Promise<ImportAnalysis[]>;

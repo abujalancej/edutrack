@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { reportUi, setActiveLanguage, setActiveTeacherSex, subjectUi, tr, trimesterOptionUi, trimesterUi } from './i18n';
+import { localizedError, reportUi, setActiveLanguage, setActiveTeacherSex, subjectUi, tr, trimesterOptionUi, trimesterUi } from './i18n';
 
 describe('tratamiento según el sexo del docente', () => {
   it('usa el masculino por defecto y el femenino cuando se selecciona', () => {
@@ -76,5 +76,29 @@ describe('ayuda del flujo de trabajo', () => {
   ] as const)('nombra claramente el formato de imagen en %s', (language, label) => {
     setActiveLanguage(language);
     expect(tr('imageFile')).toBe(label);
+  });
+});
+
+describe('textos localizados de la interfaz', () => {
+  it.each([
+    ['ca', 'Afegir nota', 'Ajuda'],
+    ['en', 'Add assessment', 'Help'],
+    ['eu', 'Gehitu ebaluazioa', 'Laguntza'],
+    ['gl', 'Engadir avaliación', 'Axuda']
+  ] as const)('mantiene las acciones y la ayuda en %s', (language, assessment, help) => {
+    setActiveLanguage(language);
+    expect(tr('addAssessment')).toBe(assessment);
+    expect(tr('help')).toBe(help);
+    expect(tr('reportsExportedWithCombined', { count: 2 })).not.toContain('generados');
+  });
+
+  it.each([
+    ['ca', 'La llista d’alumnes no coincideix amb la llista oficial del curs.'],
+    ['en', 'The student list does not match the official list for this year.'],
+    ['eu', 'Ikasleen zerrenda ez dator bat mailako zerrenda ofizialarekin.'],
+    ['gl', 'A lista de alumnos non coincide coa lista oficial do curso.']
+  ] as const)('localiza los errores de importación en %s', (language, expected) => {
+    setActiveLanguage(language);
+    expect(localizedError('La lista de alumnos no coincide con la lista oficial del curso.', 'importError')).toBe(expected);
   });
 });

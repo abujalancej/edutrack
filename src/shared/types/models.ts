@@ -10,7 +10,9 @@ export interface CenterConfiguration {
   examWeight: number;
   continuousAssessmentWeight: number;
   finalReportGradeMode: GradeMode;
+  notEvaluatedValue: string;
   grades: GradeConversion[];
+  gradesExplanation?: Record<string, string>;
   hasAssessmentWeights: boolean;
   hasLetterGrades: boolean;
 }
@@ -56,7 +58,7 @@ export interface TrackingReportsExport {
   trimester: { id: Trimester; name: string };
   report: { sequence: number; derivedFromSequence?: number };
   subjects: Array<{
-    name: string; teacher: TeacherProfile; gradeMode?: GradeMode; exportedAt: string; columns: ExportColumn[];
+    name: string; teacher: TeacherProfile; gradeMode?: GradeMode; exportedAt: string; columns: ExportColumn[]; isExcluded?: boolean;
   }>;
   students: Array<{
     name: string; tutorObservation: string;
@@ -70,6 +72,9 @@ export interface InitialState {
 export type ImportAnalysis =
   | { path: string; ok: true; data: FullSeguimentExport; duplicate: boolean }
   | { path: string; ok: false; error: string; missingInFile?: string[]; extraInFile?: string[]; matches?: boolean };
+export type WorksheetFileAnalysis =
+  | { ok: true; data: FullSeguimentExport; duplicate: boolean }
+  | { ok: false; cancelled?: boolean; error?: string };
 export type RosterFileAnalysis =
   | { path: string; ok: true; names: string[] }
   | { path: string; ok: false; error: string };

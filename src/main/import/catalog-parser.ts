@@ -96,23 +96,38 @@ function parseCenterJson(content: string): { courses: CenterCourseData[]; center
 
 function parseCenterConfiguration(root: Record<string, unknown> | null): CenterConfiguration {
   if (!root) return { ...DEFAULT_CENTER_CONFIGURATION };
-  const hasAssessmentWeights = object(root.assessmentWeights) || root.examWeight !== undefined || root.continuousAssessmentWeight !== undefined;
-  const weights = object(root.assessmentWeights) ? root.assessmentWeights : {};
-  const examWeight = hasAssessmentWeights ? weights.exam ?? root.examWeight : DEFAULT_CENTER_CONFIGURATION.examWeight;
-  const continuousAssessmentWeight = hasAssessmentWeights ? weights.continuousAssessment ?? root.continuousAssessmentWeight : DEFAULT_CENTER_CONFIGURATION.continuousAssessmentWeight;
+  const hasNestedWeights = Object.prototype.hasOwnProperty.call(root, 'assessmentWeights');
+  const hasLegacyWeights = Object.prototype.hasOwnProperty.call(root, 'examWeight') || Object.prototype.hasOwnProperty.call(root, 'continuousAssessmentWeight');
+  const hasAssessmentWeights = hasNestedWeights || hasLegacyWeights;
+  let examWeight: unknown = DEFAULT_CENTER_CONFIGURATION.examWeight;
+  let continuousAssessmentWeight: unknown = DEFAULT_CENTER_CONFIGURATION.continuousAssessmentWeight;
+  if (hasNestedWeights) {
+    if (!object(root.assessmentWeights) || !Object.prototype.hasOwnProperty.call(root.assessmentWeights, 'exam') || !Object.prototype.hasOwnProperty.call(root.assessmentWeights, 'continuousAssessment')) throw new Error('“assessmentWeights” debe incluir “exam” y “continuousAssessment”.');
+    examWeight = root.assessmentWeights.exam;
+    continuousAssessmentWeight = root.assessmentWeights.continuousAssessment;
+  } else if (hasLegacyWeights) {
+    if (!Object.prototype.hasOwnProperty.call(root, 'examWeight') || !Object.prototype.hasOwnProperty.call(root, 'continuousAssessmentWeight')) throw new Error('La configuración de porcentajes debe incluir “examWeight” y “continuousAssessmentWeight”.');
+    examWeight = root.examWeight;
+    continuousAssessmentWeight = root.continuousAssessmentWeight;
+  }
   const finalReportGradeMode = root.finalReportGradeMode ?? DEFAULT_CENTER_CONFIGURATION.finalReportGradeMode;
-  const hasLetterGrades = root.grades !== undefined;
+  const notEvaluatedValue = Object.prototype.hasOwnProperty.call(root, 'notEvaluated') ? root.notEvaluated : Object.prototype.hasOwnProperty.call(root, 'notEvaluatedValue') ? root.notEvaluatedValue : DEFAULT_CENTER_CONFIGURATION.notEvaluatedValue;
+  const gradesProvided = Object.prototype.hasOwnProperty.call(root, 'grades');
+  const explanationsProvided = Object.prototype.hasOwnProperty.call(root, 'gradesExplanation');
+  if ((gradesProvided && !Array.isArray(root.grades)) || (explanationsProvided && !object(root.gradesExplanation))) throw new Error('La configuración de notas con letras no es válida.');
+  const hasLetterGrades = Boolean(gradesProvided && explanationsProvided && (root.grades as unknown[]).length && Object.keys(root.gradesExplanation as Record<string, unknown>).length);
   const grades = hasLetterGrades ? root.grades : [];
-  if (typeof examWeight !== 'number' || typeof continuousAssessmentWeight !== 'number' || !Array.isArray(grades)) throw new Error('La configuración del centro no es válida.');
-  return normalizeCenterConfiguration({ examWeight, continuousAssessmentWeight, finalReportGradeMode: finalReportGradeMode as CenterConfiguration['finalReportGradeMode'], grades: grades as CenterConfiguration['grades'], hasAssessmentWeights, hasLetterGrades });
+  const gradesExplanation = hasLetterGrades ? root.gradesExplanation : undefined;
+  if (typeof examWeight !== 'number' || !Number.isFinite(examWeight) || typeof continuousAssessmentWeight !== 'number' || !Number.isFinite(continuousAssessmentWeight) || typeof notEvaluatedValue !== 'string') throw new Error('La configuración del centro no es válida.');
+  return normalizeCenterConfiguration({ examWeight, continuousAssessmentWeight, finalReportGradeMode: finalReportGradeMode as CenterConfiguration['finalReportGradeMode'], notEvaluatedValue, grades: grades as CenterConfiguration['grades'], gradesExplanation: gradesExplanation as Record<string, string> | undefined, hasAssessmentWeights, hasLetterGrades });
 }
 
 function parseCenterCsv(content: string): CenterCourseData[] {
   const rows = csvRows(content).filter(row => row.some(cell => cell.trim())); if (!rows.length) return [];
   const headers = rows[0].map(normalize);
-  const courseIndex = headers.findIndex(header => ['curso', 'curs', 'course'].includes(header));
-  const subjectIndex = headers.findIndex(header => ['asignaturas', 'assignatures', 'subjects', 'asignatura', 'assignatura', 'subject'].includes(header));
-  const studentIndex = headers.findIndex(header => ['alumnos', 'alumnes', 'students', 'alumno', 'alumne', 'student'].includes(header));
+  const courseIndex = headers.findIndex(header => ['curso', 'curs', 'course', 'maila'].includes(header));
+  const subjectIndex = headers.findIndex(header => ['asignaturas', 'assignatures', 'subjects', 'asignatura', 'assignatura', 'subject', 'irakasgaiak', 'materias'].includes(header));
+  const studentIndex = headers.findIndex(header => ['alumnos', 'alumnes', 'students', 'alumno', 'alumne', 'student', 'ikasleak'].includes(header));
   if (courseIndex < 0 || subjectIndex < 0 || studentIndex < 0) throw new Error('El CSV debe incluir “Curso”, “Asignaturas” y “Alumnos”.');
   const grouped = new Map<string, CenterCourseData>();
   for (const row of rows.slice(1)) {

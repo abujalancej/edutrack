@@ -29,6 +29,7 @@ describe('AppDatabase', () => {
   });
 
   it('normaliza las notas numéricas a mayúsculas antes de guardarlas', () => {
+    db.saveCenterConfiguration({ ...DEFAULT_CENTER_CONFIGURATION, notEvaluatedValue: 'NP' });
     const pau = db.addStudent('ESO_1', 'Pau Soler');
     const sheet = db.createWorksheet({ courseLevel: 'ESO_1', trimester: 'T_1', subject: 'Música', gradeMode: 'NUMERIC' });
     const assessment = db.addAssessment(sheet.id, 'EXAM', 'Examen 1', '2026-09-12').columns[0];
@@ -63,6 +64,11 @@ describe('AppDatabase', () => {
     ]);
     expect(detail.values).toEqual({});
     expect(detail.observations).toEqual({});
+    for (const copiedStudent of detail.students) for (const copiedColumn of detail.columns) db.saveCell(copy.id, copiedStudent.id, copiedColumn.id, 'grade', '8');
+    expect(db.listWorksheets().find(sheet => sheet.id === copy.id)?.isComplete).toBe(false);
+    db.updateAssessment(detail.columns[0].id, { kind: detail.columns[0].kind, name: detail.columns[0].name, assessmentDate: '2026-10-01' });
+    db.updateAssessment(detail.columns[1].id, { kind: detail.columns[1].kind, name: detail.columns[1].name, assessmentDate: '2026-10-02' });
+    expect(db.listWorksheets().find(sheet => sheet.id === copy.id)?.isComplete).toBe(true);
     expect(db.listWorksheets().find(sheet => sheet.id === copy.id)?.changeSummary).toEqual({ addedStudents: ['Marc López'], removedStudents: ['Pau Soler'], addedAssessments: [] });
     const newAssessment = db.addAssessment(copy.id, 'EXAM', 'Examen 2', '2026-10-01').columns.at(-1)!;
     expect(db.listWorksheets().find(sheet => sheet.id === copy.id)?.changeSummary?.addedAssessments).toEqual(['Examen 2']);
@@ -81,7 +87,41 @@ describe('AppDatabase', () => {
     expect(output.format).toBe('full-seguiment');
     expect(output.students[0]).toEqual({ name: 'Pau Soler', enabled: true, values: { [assessment.exportId]: '7' }, observations: { [assessment.exportId]: '' } });
     expect(JSON.stringify(output)).not.toContain('worksheetId');
-    expect(suggestedFilename(output)).toBe('ESO1_T1_Musica.edutrack');
+    expect(suggestedFilename(output)).toBe(`ESO1_T1_Musica_${output.exportedAt.slice(0, 10).replaceAll('-', '')}.edutrack`);
+  });
+
+  it('restaura una asignatura desde un archivo EduTrack y permite sustituirla', () => {
+    const anna = db.addStudent('ESO_1', 'Anna');
+    const pau = db.addStudent('ESO_1', 'Pau');
+    const data: FullSeguimentExport = {
+      format: 'full-seguiment', version: 1, exportedAt: '2026-09-16T10:00:00.000Z',
+      teacher: { firstName: 'Marta', lastName: 'Serra' },
+      course: { level: 'ESO_1', name: '1r ESO' }, trimester: { id: 'T_1', name: '1r Trimestre' },
+      subject: { name: 'Música', gradeMode: 'NUMERIC', isElective: true },
+      columns: [{ id: 'exam-1', name: 'Examen 1', kind: 'EXAM', assessmentDate: '2026-09-12' }],
+      students: [
+        { name: 'Anna', enabled: true, values: { 'exam-1': '8' }, observations: { 'exam-1': 'Molt bé' } },
+        { name: 'Pau', enabled: false, values: { 'exam-1': '' }, observations: { 'exam-1': '' } }
+      ]
+    };
+
+    const restored = db.restoreWorksheet(data, false);
+    const detail = db.getWorksheet(restored.id);
+    expect(detail).toMatchObject({ courseLevel: 'ESO_1', trimester: 'T_1', subject: 'Música', gradeMode: 'NUMERIC', isElective: true, disabledStudentIds: [pau.id] });
+    expect(detail.columns).toMatchObject([{ exportId: 'exam-1', name: 'Examen 1', kind: 'EXAM', assessmentDate: '2026-09-12' }]);
+    expect(detail.values[`${anna.id}:${detail.columns[0].id}`]).toBe('8');
+    expect(detail.observations[`${anna.id}:${detail.columns[0].id}`]).toBe('Molt bé');
+    expect(() => db.restoreWorksheet(data, false)).toThrow('DUPLICATE_WORKSHEET');
+    const secondTerm = db.copyWorksheet(restored.id, 'T_2');
+
+    const replacement = structuredClone(data);
+    replacement.students[0].values['exam-1'] = '9';
+    const replaced = db.restoreWorksheet(replacement, true);
+    expect(replaced.id).toBe(restored.id);
+    expect(db.listWorksheets()).toHaveLength(2);
+    expect(db.listWorksheets().find(worksheet => worksheet.id === secondTerm.id)).toMatchObject({ trimester: 'T_2', subject: 'Música', copiedFromId: restored.id, changeSummary: { addedStudents: [], removedStudents: [], addedAssessments: [] } });
+    const replacedDetail = db.getWorksheet(replaced.id);
+    expect(replacedDetail.values[`${anna.id}:${replacedDetail.columns[0].id}`]).toBe('9');
   });
 
   it('impide exportar una asignatura con notas pendientes', () => {
@@ -92,15 +132,17 @@ describe('AppDatabase', () => {
     expect(() => buildExport(db, sheet.id)).toThrow('INCOMPLETE_WORKSHEET');
   });
 
-  it.each(['NP', '-'])('permite exportar %s como valor especial sin nota numérica', value => {
+  it('permite exportar el valor de no evaluado sin nota numérica', () => {
+    db.saveCenterConfiguration({ ...DEFAULT_CENTER_CONFIGURATION, notEvaluatedValue: 'NP' });
     db.saveProfile({ firstName: 'Marta', lastName: 'Serra' });
     const pau = db.addStudent('ESO_1', 'Pau Soler');
     const sheet = db.createWorksheet({ courseLevel: 'ESO_1', trimester: 'T_1', subject: 'Música' });
     const assessment = db.addAssessment(sheet.id, 'EXAM', 'Examen 1', '2026-09-12').columns[0];
-    db.saveCell(sheet.id, pau.id, assessment.id, 'grade', value);
+    db.saveCell(sheet.id, pau.id, assessment.id, 'grade', 'NP');
 
     expect(db.listWorksheets().find(item => item.id === sheet.id)?.isComplete).toBe(true);
-    expect(buildExport(db, sheet.id).students[0].values[assessment.exportId]).toBe(value);
+    expect(buildExport(db, sheet.id).students[0].values[assessment.exportId]).toBe('NP');
+    expect(() => db.saveCell(sheet.id, pau.id, assessment.id, 'grade', '-')).toThrow('INVALID_GRADE_VALUE');
   });
 
   it('permite desactivar alumnado en una optativa y no exige sus notas', () => {
@@ -141,8 +183,8 @@ describe('AppDatabase', () => {
     expect(db.listWorksheets().find(item => item.id === sheet.id)?.isComplete).toBe(false);
     db.saveCell(sheet.id, pau.id, exam.id, 'grade', '5');
     expect(db.listWorksheets().find(item => item.id === sheet.id)?.isComplete).toBe(true);
-    db.saveCell(sheet.id, pau.id, exam.id, 'grade', '11');
-    expect(db.listWorksheets().find(item => item.id === sheet.id)?.isComplete).toBe(false);
+    expect(() => db.saveCell(sheet.id, pau.id, exam.id, 'grade', '11')).toThrow('INVALID_GRADE_VALUE');
+    expect(db.listWorksheets().find(item => item.id === sheet.id)?.isComplete).toBe(true);
     db.saveCell(sheet.id, pau.id, exam.id, 'grade', '5');
     db.saveCell(sheet.id, pau.id, exam.id, 'observation', 'Correcte');
     expect(db.listWorksheets().find(item => item.id === sheet.id)?.isComplete).toBe(true);
@@ -150,7 +192,7 @@ describe('AppDatabase', () => {
 
   it('admite notas con letras y modificadores como AN+ o AE-', () => {
     db.saveProfile({ firstName: 'Marta', lastName: 'Serra' });
-    db.saveCenterConfiguration({ ...DEFAULT_CENTER_CONFIGURATION, grades: [...DEFAULT_GRADE_CONVERSION], hasLetterGrades: true });
+    db.saveCenterConfiguration({ ...DEFAULT_CENTER_CONFIGURATION, grades: [...DEFAULT_GRADE_CONVERSION], gradesExplanation: { NA: 'No assoliment', AS: 'Assoliment satisfactori', AN: 'Assoliment notable', AE: 'Assoliment excel·lent' }, hasLetterGrades: true });
     const anna = db.addStudent('ESO_3', 'Anna');
     const sheet = db.createWorksheet({ courseLevel: 'ESO_3', trimester: 'T_1', subject: 'Llengua Catalana', gradeMode: 'LETTER' });
     const exam = db.addAssessment(sheet.id, 'EXAM', 'Examen', '2026-09-12').columns[0];
@@ -163,16 +205,16 @@ describe('AppDatabase', () => {
     expect(db.listWorksheets().find(item => item.id === sheet.id)?.isComplete).toBe(true);
   });
 
-  it('valida el catálogo de letras y permite notas numéricas en hojas con letras', () => {
-    db.saveCenterConfiguration({ ...DEFAULT_CENTER_CONFIGURATION, grades: [...DEFAULT_GRADE_CONVERSION], hasLetterGrades: true });
+  it('valida el catálogo de letras y rechaza notas numéricas en hojas con letras', () => {
+    db.saveCenterConfiguration({ ...DEFAULT_CENTER_CONFIGURATION, grades: [...DEFAULT_GRADE_CONVERSION], gradesExplanation: { NA: 'No assoliment', AS: 'Assoliment satisfactori', AN: 'Assoliment notable', AE: 'Assoliment excel·lent' }, hasLetterGrades: true });
     const anna = db.addStudent('ESO_3', 'Anna'); const pau = db.addStudent('ESO_3', 'Pau');
     const sheet = db.createWorksheet({ courseLevel: 'ESO_3', trimester: 'T_1', subject: 'Llengua Catalana', gradeMode: 'LETTER' });
     const exam = db.addAssessment(sheet.id, 'EXAM', 'Examen', '2026-09-12').columns[0];
     db.saveCell(sheet.id, anna.id, exam.id, 'grade', 'an+');
-    db.saveCell(sheet.id, pau.id, exam.id, 'grade', '7,5');
+    expect(() => db.saveCell(sheet.id, pau.id, exam.id, 'grade', '7,5')).toThrow('INVALID_GRADE_VALUE');
     expect(db.getWorksheet(sheet.id).values[`${anna.id}:${exam.id}`]).toBe('AN+');
-    expect(db.listWorksheets().find(item => item.id === sheet.id)?.isComplete).toBe(true);
-    db.saveCell(sheet.id, anna.id, exam.id, 'grade', 'NO_VALIDA');
+    expect(db.listWorksheets().find(item => item.id === sheet.id)?.isComplete).toBe(false);
+    expect(() => db.saveCell(sheet.id, anna.id, exam.id, 'grade', 'NO_VALIDA')).toThrow('INVALID_GRADE_VALUE');
     expect(db.listWorksheets().find(item => item.id === sheet.id)?.isComplete).toBe(false);
   });
 
@@ -184,7 +226,7 @@ describe('AppDatabase', () => {
   });
 
   it('guarda la ponderación y el formato del informe desde los datos del centro', () => {
-    db.replaceCenterData([{ name: '1r ESO', subjects: ['Català'], students: ['Aina Bosch'] }], { ...DEFAULT_CENTER_CONFIGURATION, examWeight: 60, continuousAssessmentWeight: 40, finalReportGradeMode: 'LETTER', grades: [...DEFAULT_GRADE_CONVERSION], hasAssessmentWeights: true, hasLetterGrades: true });
+    db.replaceCenterData([{ name: '1r ESO', subjects: ['Català'], students: ['Aina Bosch'] }], { ...DEFAULT_CENTER_CONFIGURATION, examWeight: 60, continuousAssessmentWeight: 40, finalReportGradeMode: 'LETTER', grades: [...DEFAULT_GRADE_CONVERSION], gradesExplanation: { NA: 'No assoliment', AS: 'Assoliment satisfactori', AN: 'Assoliment notable', AE: 'Assoliment excel·lent' }, hasAssessmentWeights: true, hasLetterGrades: true });
     expect(db.getInitialState().centerConfiguration).toMatchObject({ examWeight: 60, continuousAssessmentWeight: 40, finalReportGradeMode: 'LETTER', hasAssessmentWeights: true, hasLetterGrades: true });
   });
 
@@ -297,7 +339,10 @@ describe('AppDatabase', () => {
 
     expect(excluded.isBlocking).toBe(true);
     expect(db.setImportedWorksheetBlocking(excluded.id, false)).toMatchObject({ isBlocking: false });
-    expect(buildTrackingReports(db, reportId).subjects.map(subject => subject.name)).toEqual(['Llengua Castellana']);
+    expect(buildTrackingReports(db, reportId).subjects.map(subject => ({ name: subject.name, isExcluded: subject.isExcluded }))).toEqual([
+      { name: 'Llengua Castellana', isExcluded: false },
+      { name: 'Música', isExcluded: true }
+    ]);
     expect(db.listImports(reportId).find(item => item.id === excluded.id)?.isBlocking).toBe(false);
   });
 
@@ -316,13 +361,15 @@ describe('AppDatabase', () => {
     db.saveImport(delivery('Francès', 'Pau', '7'), false);
     const report = buildTrackingReports(db, db.listTrackingReports()[0].id);
     expect(report.subjects.map(subject => subject.name)).toEqual(['Biologia i Geologia', 'Francès']);
-    expect(report.students.map(student => [student.name, student.subjects.map(subject => Object.values(subject.values)[0] ?? '')])).toEqual([
-      ['Anna', ['8', '']],
-      ['Pau', ['', '7']]
+    expect(report.students.map(student => [student.name, student.subjects.map(subject => subject.name)])).toEqual([
+      ['Anna', ['Biologia i Geologia']],
+      ['Pau', ['Francès']]
     ]);
+    expect(report.students.map(student => student.subjects.map(subject => Object.values(subject.values)[0] ?? ''))).toEqual([['8'], ['7']]);
   });
 
   it('solo cuenta como calificado el alumnado optativo con nota en todas las evaluaciones', () => {
+    db.saveCenterConfiguration({ ...DEFAULT_CENTER_CONFIGURATION, notEvaluatedValue: 'NP' });
     const delivery: FullSeguimentExport = {
       format: 'full-seguiment', version: 1, exportedAt: '2026-09-13T10:00:00.000Z',
       teacher: { firstName: 'Marta', lastName: 'Serra' },

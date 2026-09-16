@@ -3,7 +3,8 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 import { isCourseLevel, normalizeTrimester } from '../../shared/catalogs/catalogs';
 import type { CourseLevel } from '../../shared/catalogs/catalogs';
-import type { FullSeguimentExport, ImportAnalysis } from '../../shared/types/models';
+import { isCompleteGradeValue } from '../../shared/grades/grades';
+import type { FullSeguimentExport, ImportAnalysis, WorksheetFileAnalysis } from '../../shared/types/models';
 import type { AppDatabase } from '../database/database';
 import { buildExport, suggestedFilename } from '../export/export-service';
 import { pdfFolderDialogLabels, writeStudentReportPdfs } from '../export/student-report-pdf-service';
@@ -118,6 +119,31 @@ export function registerIpc(db: AppDatabase) {
       return { ok: false, code, error: code };
     }
   });
+  ipcMain.handle('worksheet:import-choose', async (): Promise<WorksheetFileAnalysis> => {
+    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'EduTrack', extensions: ['edutrack'] }] });
+    if (result.canceled || !result.filePaths[0]) return { ok: false, cancelled: true };
+    const path = result.filePaths[0];
+    try {
+      if (!path.toLowerCase().endsWith('.edutrack')) return { ok: false, error: `${basename(path)} no tiene la extensión .edutrack.` };
+      let parsed: unknown;
+      try { parsed = JSON.parse(await readFile(path, 'utf8')); } catch { return { ok: false, error: `${basename(path)} no contiene JSON válido.` }; }
+      return analyzeWorksheetFile(db, parsed);
+    } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'No se ha podido leer el archivo.' }; }
+  });
+  ipcMain.handle('worksheet:import-commit', (_e, data: FullSeguimentExport, replace: boolean) => {
+    if (typeof replace !== 'boolean') return { ok: false, error: 'La opción de sustitución no es válida.' };
+    const analysis = analyzeWorksheetFile(db, data);
+    if (!analysis.ok) return analysis;
+    if (analysis.duplicate && !replace) return { ok: false, code: 'DUPLICATE_WORKSHEET', error: 'La asignatura ya existe.' };
+    try {
+      const worksheet = db.restoreWorksheet(analysis.data, replace);
+      return { ok: true, replaced: analysis.duplicate, worksheetId: worksheet.id };
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'WORKSHEET_IMPORT_ERROR';
+      const message = code === 'LETTER_GRADES_NOT_CONFIGURED' ? 'Las notas con letras del archivo no están configuradas en este centro.' : code === 'INVALID_GRADE_VALUE' ? 'El archivo contiene notas no admitidas por la configuración del centro.' : code === 'STUDENT_ROSTER_MISMATCH' ? 'La lista de alumnos no coincide con la lista oficial del curso.' : 'No se ha podido importar la asignatura.';
+      return { ok: false, code, error: message };
+    }
+  });
   ipcMain.handle('import:choose', async () => {
     const result = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'], filters: [{ name: 'EduTrack', extensions: ['edutrack'] }] });
     return result.canceled ? [] : result.filePaths;
@@ -184,4 +210,19 @@ export function registerIpc(db: AppDatabase) {
     if (!Number.isInteger(reportId) || reportId <= 0) throw new Error('Informe de seguimiento no válido.');
     db.deleteTrackingReport(reportId);
   });
+}
+
+function analyzeWorksheetFile(db: AppDatabase, value: unknown): WorksheetFileAnalysis {
+  const validation = validateImport(value);
+  if (!validation.ok) return validation;
+  const data = validation.data;
+  if (!db.hasCourse(data.course.level) || db.courseName(data.course.level) !== data.course.name || !db.hasSubject(data.course.level, data.subject.name)) return { ok: false, error: 'El curso o la asignatura del archivo no están configurados en este centro.' };
+  const official = db.listStudents(data.course.level).map(student => student.fullName);
+  if (!compareStudentNames(official, data.students.map(student => student.name)).matches) return { ok: false, error: 'La lista de alumnos no coincide con la lista oficial del curso.' };
+  const gradeMode = data.subject.gradeMode ?? 'NUMERIC';
+  const configuration = db.getCenterConfiguration();
+  if (gradeMode === 'LETTER' && !configuration.hasLetterGrades) return { ok: false, error: 'Las notas con letras del archivo no están configuradas en este centro.' };
+  if (data.students.some(student => Object.values(student.values).some(value => value && !isCompleteGradeValue(value, gradeMode, configuration.grades, configuration.notEvaluatedValue)))) return { ok: false, error: 'El archivo contiene notas no admitidas por la configuración del centro.' };
+  const duplicate = db.listWorksheets().some(worksheet => worksheet.courseLevel === data.course.level && worksheet.trimester === data.trimester.id && worksheet.subject === data.subject.name);
+  return { ok: true, data, duplicate };
 }

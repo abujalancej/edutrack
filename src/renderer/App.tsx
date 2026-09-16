@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TRIMESTERS, type CourseLevel, type Trimester } from '@shared/catalogs/catalogs';
 import { DEFAULT_CENTER_CONFIGURATION } from '@shared/center/center-configuration';
-import { isCompleteGradeValue, normalizeGradeValue } from '@shared/grades/grades';
-import type { AppLanguage, AppMode, AssessmentKind, GradeMode, ImportedWorksheetDetail, ImportedWorksheetSummary, ImportAnalysis, InitialState, TeacherSex, TrackingReportSummary, WorksheetDetail, WorksheetSummary } from '@shared/types/models';
+import { isCompleteGradeValue, normalizeGradeValue, numericValueForLetterGrade } from '@shared/grades/grades';
+import type { AppLanguage, AppMode, AssessmentKind, FullSeguimentExport, GradeMode, ImportedWorksheetDetail, ImportedWorksheetSummary, ImportAnalysis, InitialState, TeacherSex, TrackingReportSummary, WorksheetDetail, WorksheetSummary } from '@shared/types/models';
 import { Icon } from './components/Icon';
-import { LANGUAGES, LANGUAGE_LABELS, courseUi, getActiveLanguage, reportUi, setActiveLanguage, setActiveTeacherSex, subjectUi, tr, trimesterOptionUi, trimesterUi } from './i18n';
+import { LANGUAGES, LANGUAGE_LABELS, courseUi, getActiveLanguage, localizedError, reportUi, setActiveLanguage, setActiveTeacherSex, subjectUi, tr, trimesterOptionUi, trimesterUi } from './i18n';
 import { subjectMonograms } from './subject-monogram';
 import appIcon from './assets/app-icon.png';
 
@@ -13,12 +13,12 @@ type Notice = { type: 'success' | 'error'; text: string } | null;
 type CellField = 'grade' | 'observation';
 type GridSelection = { start: { row: number; column: number }; end: { row: number; column: number } };
 const GRID_FIELDS: CellField[] = ['grade', 'observation'];
-const importedGradeTone = (value: string, mode: GradeMode) => {
+const importedGradeTone = (value: string, mode: GradeMode, grades: InitialState['centerConfiguration']['grades'], notEvaluatedValue: string) => {
   const normalized = normalizeGradeValue(value);
   if (!normalized) return 'missing';
-  if (mode === 'LETTER') return 'recorded';
-  if (normalized === '-') return 'special';
-  return normalized === 'NP' || Number(value.replace(',', '.')) < 5 ? 'fail' : 'pass';
+  const numericGrade = mode === 'LETTER' ? numericValueForLetterGrade(normalized, grades) : Number(value.replace(',', '.'));
+  if (normalized === normalizeGradeValue(notEvaluatedValue)) return 'neutral';
+  return numericGrade === undefined || numericGrade < 5 ? 'fail' : 'pass';
 };
 const emptyState: InitialState = { profile: { firstName: '', lastName: '', sex: 'MALE' }, language: 'es', schoolLogo: '', centerConfiguration: DEFAULT_CENTER_CONFIGURATION, courses: [], subjects: [], students: [], worksheets: [], imports: [], trackingReports: [], tutorObservations: {} };
 const courseName = (state: InitialState, id: string) => state.courses.find(course => course.id === id)?.name ?? courseUi(id);
@@ -64,7 +64,7 @@ export default function App() {
       {view.page === 'tutor-report' && mode === 'tutor' && <TutorReportPage state={state} reportId={view.reportId} navigate={setView} refresh={refresh} notify={notify} />}
       {view.page === 'settings' && <Settings state={state} refresh={refresh} notify={notify} onProfileChange={updateProfile} />}
       {view.page === 'help' && <HelpPage />}
-      {view.page === 'sheet' && <WorksheetPage id={view.id} navigate={setView} refresh={refresh} notify={notify} courses={state.courses} worksheets={state.worksheets} profile={state.profile} centerConfiguration={state.centerConfiguration} />}
+      {view.page === 'sheet' && <WorksheetPage id={view.id} navigate={setView} refresh={refresh} notify={notify} courses={state.courses} profile={state.profile} centerConfiguration={state.centerConfiguration} />}
       {view.page === 'imported' && <ImportedPage id={view.id} navigate={setView} state={state} />}
     </main>
     {notice && <div className={`toast ${notice.type}`}><Icon name={notice.type === 'success' ? 'check' : 'x'} />{notice.text}</div>}
@@ -100,7 +100,7 @@ function Sidebar({ mode, view, state, onNavigate, onMode, language, onLanguage }
       <span className="nav-caption">{mode === 'teacher' ? tr('teacherSpace') : tr('tutorSpace')}</span>
       <button title={dashboardLabel} className={view.page === 'dashboard' || view.page === 'sheet' || view.page === 'tutor-report' || view.page === 'imported' ? 'active' : ''} onClick={() => onNavigate({ page: 'dashboard' })}><Icon name={mode === 'teacher' ? 'book' : 'report'} /> <span>{dashboardLabel}</span></button>
     </nav>
-    <div className="sidebar-foot"><nav className="sidebar-common"><label className="sidebar-language-row"><Icon name="language" /><span>{tr('language')}</span><select value={language} aria-label={tr('language')} onChange={event => onLanguage(event.target.value as AppLanguage)}>{LANGUAGES.map(item => <option value={item} key={item}>{LANGUAGE_LABELS[item]}</option>)}</select></label><button title={`${tr('dataMenu')}: ${dataComplete ? tr('dataComplete') : tr('dataIncomplete')}`} className={view.page === 'settings' ? 'active' : ''} onClick={() => onNavigate({ page: 'settings' })}><Icon name="database" /> <span>{tr('dataMenu')}</span><i className={`sidebar-data-status ${dataComplete ? 'complete' : 'incomplete'}`} aria-label={dataComplete ? tr('dataComplete') : tr('dataIncomplete')}><Icon name={dataComplete ? 'check' : 'x'} size={14} /></i></button><button title={tr('help')} className={view.page === 'help' ? 'active' : ''} onClick={() => onNavigate({ page: 'help' })}><Icon name="sheet" /> <span>{tr('help')}</span></button></nav><small className="app-credit">EduTrack v1.1.0 by <a href="https://github.com/abujalancej/edutrack" target="_blank" rel="noreferrer">abujalancej</a></small></div>
+    <div className="sidebar-foot"><nav className="sidebar-common"><label className="sidebar-language-row"><Icon name="language" /><span>{tr('language')}</span><select value={language} aria-label={tr('language')} onChange={event => onLanguage(event.target.value as AppLanguage)}>{LANGUAGES.map(item => <option value={item} key={item}>{LANGUAGE_LABELS[item]}</option>)}</select></label><button title={`${tr('dataMenu')}: ${dataComplete ? tr('dataComplete') : tr('dataIncomplete')}`} className={view.page === 'settings' ? 'active' : ''} onClick={() => onNavigate({ page: 'settings' })}><Icon name="database" /> <span>{tr('dataMenu')}</span><i className={`sidebar-data-status ${dataComplete ? 'complete' : 'incomplete'}`} aria-label={dataComplete ? tr('dataComplete') : tr('dataIncomplete')}><Icon name={dataComplete ? 'check' : 'x'} size={14} /></i></button><button title={tr('help')} className={view.page === 'help' ? 'active' : ''} onClick={() => onNavigate({ page: 'help' })}><Icon name="sheet" /> <span>{tr('help')}</span></button></nav><small className="app-credit">EduTrack v1.1.0 · <a href="https://github.com/abujalancej/edutrack" target="_blank" rel="noreferrer">abujalancej</a></small></div>
   </aside>;
 }
 
@@ -110,12 +110,19 @@ function PageHeader({ eyebrow, title, subtitle, action }: { eyebrow: string; tit
 
 function TeacherDashboard({ state, refresh, navigate, notify }: { state: InitialState; refresh: () => Promise<void>; navigate: (v: View) => void; notify: (n: Notice) => void }) {
   const [creating, setCreating] = useState(false);
+  const [copyingSheet, setCopyingSheet] = useState<WorksheetSummary | null>(null);
   const [sheetToDelete, setSheetToDelete] = useState<WorksheetSummary | null>(null);
+  const [worksheetToImport, setWorksheetToImport] = useState<FullSeguimentExport | null>(null);
   const catalogReady = state.courses.length > 0 && state.subjects.length > 0;
   const completedSheets = state.worksheets.filter(sheet => sheet.isComplete).length;
   const grouped = useMemo(() => state.courses.map(course => ({ course, trimesters: TRIMESTERS.map(trimester => ({ trimester, sheets: state.worksheets.filter(w => w.courseLevel === course.id && w.trimester === trimester) })).filter(x => x.sheets.length) })).filter(x => x.trimesters.length), [state.courses, state.worksheets]);
   const deleteSheet = async (sheet: WorksheetSummary) => {
     await window.fullSeguiment.deleteWorksheet(sheet.id); await refresh(); notify({ type: 'success', text: tr('sheetDeleted') });
+  };
+  const copySheet = async (trimester: Trimester) => {
+    if (!copyingSheet) return;
+    const copy = await window.fullSeguiment.copyWorksheet(copyingSheet.id, trimester);
+    await refresh(); setCopyingSheet(null); notify({ type: 'success', text: tr('copySheetCreated') }); navigate({ page: 'sheet', id: copy.id });
   };
   const exportSheet = async (sheet: WorksheetSummary) => {
     const result = await window.fullSeguiment.exportWorksheet(sheet.id);
@@ -124,13 +131,26 @@ function TeacherDashboard({ state, refresh, navigate, notify }: { state: Initial
     else if (result.code === 'STUDENTS_REQUIRED') notify({ type: 'error', text: tr('studentsNeeded') });
     else if (result.code === 'INCOMPLETE_WORKSHEET') notify({ type: 'error', text: tr('worksheetIncomplete') });
   };
+  const restoreWorksheet = async (data: FullSeguimentExport, replace: boolean) => {
+    const result = await window.fullSeguiment.commitWorksheetImport(data, replace);
+    if (!result.ok || !result.worksheetId) { notify({ type: 'error', text: localizedError(result.error, 'worksheetImportError') }); return false; }
+    await refresh(); notify({ type: 'success', text: tr(replace ? 'worksheetReplaced' : 'worksheetImported', { trimester: trimesterUi(data.trimester.id) }) }); navigate({ page: 'sheet', id: result.worksheetId }); return true;
+  };
+  const chooseWorksheetImport = async () => {
+    const result = await window.fullSeguiment.chooseWorksheetImport();
+    if (!result.ok) { if (!result.cancelled) notify({ type: 'error', text: localizedError(result.error, 'worksheetImportError') }); return; }
+    if (result.duplicate) setWorksheetToImport(result.data);
+    else await restoreWorksheet(result.data, false);
+  };
   return <>
-    <PageHeader eyebrow={tr('teacherSpace')} title={tr('mySheets')} subtitle={tr('mySheetsHelp')} action={<button className="primary header-icon-action" title={catalogReady ? tr('newSheet') : tr('configureCenterHelp')} aria-label={tr('newSheet')} disabled={!catalogReady} onClick={() => setCreating(true)}><Icon name="plus" /></button>} />
+    <PageHeader eyebrow={tr('teacherSpace')} title={tr('mySheets')} subtitle={tr('mySheetsHelp')} action={<div className="header-actions"><button className="secondary header-icon-action" title={catalogReady ? tr('importWorksheet') : tr('configureCenterHelp')} aria-label={tr('importWorksheet')} disabled={!catalogReady} onClick={() => void chooseWorksheetImport()}><Icon name="upload" /></button><button className="primary header-icon-action" title={catalogReady ? tr('newSheet') : tr('configureCenterHelp')} aria-label={tr('newSheet')} disabled={!catalogReady} onClick={() => setCreating(true)}><Icon name="plus" /></button></div>} />
     <section className="teacher-summary" aria-label={tr('summary')}><div className="teacher-summary-items"><article><span><Icon name="sheet" /></span><div><strong>{state.worksheets.length}</strong><small>{tr('sheetsCreated')}</small></div></article><article className="ready"><span><Icon name="download" /></span><div><strong>{completedSheets}</strong><small>{tr('readyToExport')}</small></div></article></div></section>
     {grouped.length === 0 ? <Empty icon="sheet" title={tr('noSheets')} text={catalogReady ? tr('noSheetsHelp') : tr('configureCenterHelp')} /> :
-      <div className="course-list">{grouped.map(group => { const courseSheets = group.trimesters.flatMap(item => item.sheets); const completed = courseSheets.filter(sheet => sheet.isComplete).length; const monograms = subjectMonograms(courseSheets.map(sheet => sheet.subject)); return <section className="course-group" key={group.course.id}><div className="course-title"><span>{group.course.name}</span><small className={completed === courseSheets.length ? 'all-complete' : ''}>{completed}/{courseSheets.length} {tr('complete').toLocaleLowerCase()}</small></div>{group.trimesters.map(t => <div className="trimester-block" key={t.trimester}><h3>{trimesterUi(t.trimester)}</h3><div className="sheet-cards subject-rows">{t.sheets.map(sheet => { const changes = sheet.changeSummary; return <article className={`sheet-card ${sheet.isComplete ? 'sheet-complete' : ''}`} key={sheet.id}><button className="sheet-open-button" onClick={() => navigate({ page: 'sheet', id: sheet.id })}><span className="subject-monogram">{monograms.get(sheet.subject)}</span><span className="sheet-card-copy"><strong>{subjectUi(sheet.subject)}{sheet.isElective && <i className="subject-elective-badge">{tr('elective')}</i>}</strong><small>{tr('updated')} {formatRelative(sheet.updatedAt)}</small>{changes && <span className="worksheet-change-warnings">{changes.addedStudents.length > 0 && <b>{tr('newStudentsWarning', { count: changes.addedStudents.length })}</b>}{changes.removedStudents.length > 0 && <b>{tr('removedStudentsWarning', { count: changes.removedStudents.length })}</b>}{changes.addedAssessments.length > 0 && <b>{tr('newAssessmentsWarning', { count: changes.addedAssessments.length })}</b>}</span>}</span><span className="assessment-counts"><b>{tr('examCount', { count: sheet.examCount })}</b><b>{tr('continuousCount', { count: sheet.continuousAssessmentCount })}</b></span><span className={`subject-completion ${sheet.isComplete ? 'complete' : 'incomplete'}`}>{sheet.isComplete && <Icon name="check" size={14} />}{sheet.isComplete ? tr('complete') : tr('incomplete')}</span></button><button className="icon-button sheet-card-icon-action sheet-export-button" title={sheet.isComplete ? tr('export') : tr('worksheetIncomplete')} aria-label={`${tr('export')}: ${subjectUi(sheet.subject)}`} disabled={!sheet.isComplete} onClick={() => void exportSheet(sheet)}><Icon name="download" /></button><button className="icon-button danger sheet-card-icon-action sheet-delete-button" title={tr('delete')} aria-label={`${tr('delete')}: ${subjectUi(sheet.subject)}`} onClick={() => setSheetToDelete(sheet)}><Icon name="trash" /></button></article>; })}</div></div>)}</section>; })}</div>}
+      <div className="course-list">{grouped.map(group => { const courseSheets = group.trimesters.flatMap(item => item.sheets); const completed = courseSheets.filter(sheet => sheet.isComplete).length; const monograms = subjectMonograms(courseSheets.map(sheet => sheet.subject)); return <section className="course-group" key={group.course.id}><div className="course-title"><span>{group.course.name}</span><small className={completed === courseSheets.length ? 'all-complete' : ''}>{completed}/{courseSheets.length} {tr('complete').toLocaleLowerCase()}</small></div>{group.trimesters.map(t => <div className="trimester-block" key={t.trimester}><h3>{trimesterUi(t.trimester)}</h3><div className="sheet-cards subject-rows">{t.sheets.map(sheet => { const changes = sheet.changeSummary; return <article className={`sheet-card ${sheet.isComplete ? 'sheet-complete' : ''}`} key={sheet.id}><button className="sheet-open-button" onClick={() => navigate({ page: 'sheet', id: sheet.id })}><span className="subject-monogram">{monograms.get(sheet.subject)}</span><span className="sheet-card-copy"><strong>{subjectUi(sheet.subject)}{sheet.isElective && <i className="subject-elective-badge">{tr('elective')}</i>}</strong><small>{tr('updated')} {formatRelative(sheet.updatedAt)}</small>{changes && <span className="worksheet-change-warnings">{changes.addedStudents.length > 0 && <b>{tr('newStudentsWarning', { count: changes.addedStudents.length })}</b>}{changes.removedStudents.length > 0 && <b>{tr('removedStudentsWarning', { count: changes.removedStudents.length })}</b>}{changes.addedAssessments.length > 0 && <b>{tr('newAssessmentsWarning', { count: changes.addedAssessments.length })}</b>}</span>}</span><span className="assessment-counts"><b>{tr('examCount', { count: sheet.examCount })}</b><b>{tr('continuousCount', { count: sheet.continuousAssessmentCount })}</b></span><span className={`subject-completion ${sheet.isComplete ? 'complete' : 'incomplete'}`}>{sheet.isComplete && <Icon name="check" size={14} />}{sheet.isComplete ? tr('complete') : tr('incomplete')}</span></button><button className="icon-button sheet-card-icon-action sheet-export-button" title={sheet.isComplete ? tr('export') : tr('worksheetIncomplete')} aria-label={`${tr('export')}: ${subjectUi(sheet.subject)}`} disabled={!sheet.isComplete} onClick={() => void exportSheet(sheet)}><Icon name="download" /></button><button className="icon-button sheet-card-icon-action" title={tr('copySheet')} aria-label={`${tr('copySheet')}: ${subjectUi(sheet.subject)}`} onClick={() => setCopyingSheet(sheet)}><Icon name="copy" /></button><button className="icon-button danger sheet-card-icon-action sheet-delete-button" title={tr('delete')} aria-label={`${tr('delete')}: ${subjectUi(sheet.subject)}`} onClick={() => setSheetToDelete(sheet)}><Icon name="trash" /></button></article>; })}</div></div>)}</section>; })}</div>}
     {creating && <NewWorksheetModal state={state} close={() => setCreating(false)} refresh={refresh} navigate={navigate} />}
-    {sheetToDelete && <ConfirmDeleteModal title={tr('deleteSheetTitle')} message={tr('deleteSheet', { sheet: configuredSheetName(state, sheetToDelete.courseLevel, sheetToDelete.trimester, sheetToDelete.subject) })} confirmationText={sheetToDelete.subject} close={() => setSheetToDelete(null)} confirm={() => deleteSheet(sheetToDelete)} />}
+    {copyingSheet && <CopyWorksheetModal subject={copyingSheet.subject} sourceTrimester={copyingSheet.trimester} existingTrimesters={state.worksheets.filter(item => item.courseLevel === copyingSheet.courseLevel && item.subject === copyingSheet.subject).map(item => item.trimester)} close={() => setCopyingSheet(null)} onSave={copySheet} />}
+    {sheetToDelete && <ConfirmDeleteModal title={tr('deleteSheetTitle')} question={tr('deleteSheetQuestion')} identifier={configuredSheetName(state, sheetToDelete.courseLevel, sheetToDelete.trimester, sheetToDelete.subject)} note={tr('deleteSheetNote')} confirmationText={confirmationWord(sheetToDelete.subject)} confirmationPlaceholder={confirmationWord(sheetToDelete.subject)} close={() => setSheetToDelete(null)} confirm={() => deleteSheet(sheetToDelete)} />}
+    {worksheetToImport && <ConfirmDeleteModal title={tr('replaceWorksheetTitle')} question={tr('replaceWorksheetQuestion')} identifier={`${worksheetToImport.course.name} · ${trimesterUi(worksheetToImport.trimester.id)} · ${subjectUi(worksheetToImport.subject.name)}`} note={tr('replaceWorksheetNote')} confirmationText={confirmationWord(worksheetToImport.subject.name)} confirmationPlaceholder={confirmationWord(worksheetToImport.subject.name)} confirmLabel={tr('confirmReplace')} close={() => setWorksheetToImport(null)} confirm={() => restoreWorksheet(worksheetToImport, true)} />}
   </>;
 }
 
@@ -152,12 +172,13 @@ function NewWorksheetModal({ state, close, refresh, navigate }: { state: Initial
   </Modal>;
 }
 
-function WorksheetPage({ id, navigate, refresh, notify, courses, worksheets, profile, centerConfiguration }: { id: number; navigate: (v: View) => void; refresh: () => Promise<void>; notify: (n: Notice) => void; courses: InitialState['courses']; worksheets: InitialState['worksheets']; profile: InitialState['profile']; centerConfiguration: InitialState['centerConfiguration'] }) {
+function WorksheetPage({ id, navigate, refresh, notify, courses, profile, centerConfiguration }: { id: number; navigate: (v: View) => void; refresh: () => Promise<void>; notify: (n: Notice) => void; courses: InitialState['courses']; profile: InitialState['profile']; centerConfiguration: InitialState['centerConfiguration'] }) {
   const [sheet, setSheet] = useState<WorksheetDetail | null>(null); const [adding, setAdding] = useState(false); const [editing, setEditing] = useState<WorksheetDetail['columns'][number] | null>(null);
-  const [assessmentToDelete, setAssessmentToDelete] = useState<WorksheetDetail['columns'][number] | null>(null); const [confirmingSelectionClear, setConfirmingSelectionClear] = useState(false); const [copying, setCopying] = useState(false);
+  const [assessmentToDelete, setAssessmentToDelete] = useState<WorksheetDetail['columns'][number] | null>(null); const [confirmingSelectionClear, setConfirmingSelectionClear] = useState(false);
   const [activeAssessmentId, setActiveAssessmentId] = useState<number | null>(null);
   const [managingElectiveStudents, setManagingElectiveStudents] = useState(false);
   const [selection, setSelection] = useState<GridSelection | null>(null);
+  const [gridDragStart, setGridDragStart] = useState<{ row: number; column: number } | null>(null);
   const load = useCallback(() => window.fullSeguiment.getWorksheet(id).then(setSheet), [id]);
   useEffect(() => { void load(); }, [load]);
   if (!sheet) return <div className="page-loader"><div className="spinner" /></div>;
@@ -171,14 +192,15 @@ function WorksheetPage({ id, navigate, refresh, notify, courses, worksheets, pro
     setAdding(false); setEditing(null); await load(); await refresh();
   };
   const removeColumn = async (columnId: number) => { await window.fullSeguiment.deleteColumn(columnId); if (activeAssessmentId === columnId) setActiveAssessmentId(null); setSelection(null); await load(); await refresh(); };
-  const copyWorksheet = async (trimester: Trimester) => { const copy = await window.fullSeguiment.copyWorksheet(id, trimester); await refresh(); setCopying(false); notify({ type: 'success', text: tr('copySheetCreated') }); navigate({ page: 'sheet', id: copy.id }); };
   const exportSheet = async () => { const result = await window.fullSeguiment.exportWorksheet(id); if (result.ok) notify({ type: 'success', text: tr('exported') }); else if (result.code === 'PROFILE_REQUIRED') { notify({ type: 'error', text: tr('profileNeeded') }); navigate({ page: 'settings' }); } else if (result.code === 'STUDENTS_REQUIRED') notify({ type: 'error', text: tr('studentsNeeded') }); else if (result.code === 'INCOMPLETE_WORKSHEET') notify({ type: 'error', text: tr('worksheetIncomplete') }); };
   const activeAssessment = sheet.columns.find(column => column.id === activeAssessmentId) ?? sheet.columns[0] ?? null;
   const disabledStudentIds = new Set(sheet.disabledStudentIds ?? []);
   const activeStudents = sheet.students.filter(student => !disabledStudentIds.has(student.id));
   const activeIndex = activeAssessment ? sheet.columns.findIndex(column => column.id === activeAssessment.id) : -1;
-  const activeComplete = Boolean(activeAssessment && activeStudents.length > 0 && activeStudents.every(student => isCompleteGradeValue(sheet.values[`${student.id}:${activeAssessment.id}`] ?? '', sheet.gradeMode, centerConfiguration.grades)));
-  const exportReady = Boolean(profile.firstName.trim() && profile.lastName.trim() && activeStudents.length && sheet.columns.length && activeStudents.every(student => sheet.columns.every(column => isCompleteGradeValue(sheet.values[`${student.id}:${column.id}`] ?? '', sheet.gradeMode, centerConfiguration.grades))));
+  const activeDatePending = Boolean(sheet.copiedFromId && activeAssessment && !activeAssessment.assessmentDate);
+  const hasPendingCopiedDates = Boolean(sheet.copiedFromId && sheet.columns.some(column => !column.assessmentDate));
+  const activeComplete = Boolean(!activeDatePending && activeAssessment && activeStudents.length > 0 && activeStudents.every(student => isCompleteGradeValue(sheet.values[`${student.id}:${activeAssessment.id}`] ?? '', sheet.gradeMode, centerConfiguration.grades, centerConfiguration.notEvaluatedValue)));
+  const exportReady = Boolean(!hasPendingCopiedDates && profile.firstName.trim() && profile.lastName.trim() && activeStudents.length && sheet.columns.length && activeStudents.every(student => sheet.columns.every(column => isCompleteGradeValue(sheet.values[`${student.id}:${column.id}`] ?? '', sheet.gradeMode, centerConfiguration.grades, centerConfiguration.notEvaluatedValue))));
   const normalized = selection ? { top: Math.min(selection.start.row, selection.end.row), bottom: Math.max(selection.start.row, selection.end.row), left: Math.min(selection.start.column, selection.end.column), right: Math.max(selection.start.column, selection.end.column) } : null;
   const selectedCount = normalized ? (normalized.bottom - normalized.top + 1) * (normalized.right - normalized.left + 1) : 0;
   const valueAt = (row: number, column: number) => {
@@ -195,6 +217,7 @@ function WorksheetPage({ id, navigate, refresh, notify, courses, worksheets, pro
       if (!student || !field) continue;
       const key = `${student.id}:${activeAssessment.id}`;
       const value = field === 'grade' ? sheet.gradeMode === 'NUMERIC' ? normalizeGradeValue(update.value) : update.value.toLocaleUpperCase().slice(0, 12) : update.value;
+      if (field === 'grade' && sheet.gradeMode === 'LETTER' && value !== '' && !isCompleteGradeValue(value, 'LETTER', centerConfiguration.grades, centerConfiguration.notEvaluatedValue)) { notify({ type: 'error', text: tr('invalidLetterGrade', { notEvaluatedValue: centerConfiguration.notEvaluatedValue }) }); continue; }
       if (field === 'grade') values[key] = value; else observations[key] = value;
       saves.push(window.fullSeguiment.saveCell(id, student.id, activeAssessment.id, field, value));
     }
@@ -232,13 +255,16 @@ function WorksheetPage({ id, navigate, refresh, notify, courses, worksheets, pro
   };
   const handleGridKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === 'Tab') { setSelection(null); return; }
-    if ((event.ctrlKey || event.metaKey) && event.shiftKey && ['ArrowUp', 'ArrowDown'].includes(event.key) && activeStudents.length > 0) {
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key) && activeStudents.length > 0) {
       event.preventDefault();
       const focusedCell = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-grid-row][data-grid-column]') : null;
       const focused = focusedCell ? { row: Number(focusedCell.dataset.gridRow), column: Number(focusedCell.dataset.gridColumn) } : null;
       const start = selection?.start ?? focused ?? { row: 0, column: 0 };
       const end = selection?.end ?? start;
-      setSelection({ start, end: { row: event.key === 'ArrowUp' ? 0 : activeStudents.length - 1, column: end.column } });
+      setSelection({ start, end: {
+        row: event.key === 'ArrowUp' ? 0 : event.key === 'ArrowDown' ? activeStudents.length - 1 : end.row,
+        column: event.key === 'ArrowLeft' ? 0 : event.key === 'ArrowRight' ? GRID_FIELDS.length - 1 : end.column
+      } });
       return;
     }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
@@ -252,20 +278,30 @@ function WorksheetPage({ id, navigate, refresh, notify, courses, worksheets, pro
     if (editingCell && selectedCount === 1) return;
     event.preventDefault(); setConfirmingSelectionClear(true);
   };
-  const selectCell = (row: number, column: number, extend = false) => setSelection(current => extend && current ? { ...current, end: { row, column } } : { start: { row, column }, end: { row, column } });
+  const beginCellSelection = (event: React.MouseEvent, row: number, column: number) => {
+    const editing = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
+    if (editing && !event.shiftKey) { setGridDragStart({ row, column }); setSelection(null); return; }
+    const start = event.shiftKey && selection ? selection.start : { row, column };
+    setGridDragStart(start);
+    setSelection({ start, end: { row, column } });
+  };
+  const extendCellSelection = (row: number, column: number) => {
+    if (gridDragStart && (row !== gridDragStart.row || column !== gridDragStart.column)) setSelection({ start: gridDragStart, end: { row, column } });
+  };
+  const endCellSelection = () => { setGridDragStart(null); };
   const selectAssessment = (assessmentId: number | null) => { setActiveAssessmentId(assessmentId); setSelection(null); };
   return <>
-    <div className="sheet-toolbar compact-sheet-toolbar"><button className="back-button" onClick={() => navigate({ page: 'dashboard' })}><Icon name="back" /> {tr('back')}</button><div className="compact-sheet-title"><span>{courses.find(course => course.id === sheet.courseLevel)?.name ?? sheet.courseLevel} · {trimesterUi(sheet.trimester)}</span><strong>{subjectUi(sheet.subject)}{sheet.isElective && <small className="elective-title-tag">{tr('elective')}</small>}</strong></div><div className="toolbar-actions">{sheet.isElective && <button className="secondary elective-students-button" title={tr('manageElectiveStudents')} onClick={() => setManagingElectiveStudents(true)}><Icon name="users" /> {activeStudents.length}/{sheet.students.length}</button>}<button className="secondary" title={tr('copySheet')} onClick={() => setCopying(true)}><Icon name="copy" /> {tr('copySheet')}</button><button className="primary" disabled={!exportReady} title={exportReady ? tr('export') : tr('exportRequirements')} onClick={() => void exportSheet()}><Icon name="download" /> {tr('export')}</button></div></div>
+    <div className="sheet-toolbar compact-sheet-toolbar"><button className="back-button" onClick={() => navigate({ page: 'dashboard' })}><Icon name="back" /> {tr('back')}</button><div className="compact-sheet-title"><span>{courses.find(course => course.id === sheet.courseLevel)?.name ?? sheet.courseLevel} · {trimesterUi(sheet.trimester)}</span><strong>{subjectUi(sheet.subject)}{sheet.isElective && <small className="elective-title-tag">{tr('elective')}</small>}</strong></div><div className="toolbar-actions">{sheet.isElective && <button className="secondary elective-students-button" title={tr('manageElectiveStudents')} onClick={() => setManagingElectiveStudents(true)}><Icon name="users" /> {activeStudents.length}/{sheet.students.length}</button>}<button className="primary export-icon-button" disabled={!exportReady} title={exportReady ? tr('export') : tr('exportRequirements')} aria-label={tr('export')} onClick={() => void exportSheet()}><Icon name="download" /></button></div></div>
     {sheet.students.length === 0 ? <Empty icon="users" title={tr('noCourseStudents')} text={tr('noCourseStudentsHelp')} action={<button className="primary" onClick={() => navigate({ page: 'settings' })}>{tr('goSettings')}</button>} /> :
       <div className="assessment-workspace">
         <section className="assessment-detail">
-          <header className="assessment-compact-header"><label className="assessment-picker"><select aria-label={tr('availableAssessments')} value={activeAssessment?.id ?? ''} disabled={!activeAssessment} onChange={event => selectAssessment(Number(event.target.value))}>{activeAssessment ? sheet.columns.map(column => <option key={column.id} value={column.id}>{column.name} · {formatDateOnly(column.assessmentDate)} | {column.kind === 'EXAM' ? tr('exam') : tr('continuous')}</option>) : <option value="">{tr('noAssessments')}</option>}</select>{activeAssessment && <b className={`assessment-state ${activeComplete ? 'complete' : 'incomplete'}`}>{activeComplete ? tr('complete') : tr('incomplete')}</b>}</label><div className="assessment-actions"><button className="icon-action" title={tr('previous')} disabled={!activeAssessment || activeIndex <= 0} onClick={() => selectAssessment(sheet.columns[activeIndex - 1]?.id ?? null)}><Icon name="back" /></button><button className="icon-action next-assessment" title={tr('next')} disabled={!activeAssessment || activeIndex >= sheet.columns.length - 1} onClick={() => selectAssessment(sheet.columns[activeIndex + 1]?.id ?? null)}>→</button><i className="assessment-action-separator" /><button className="icon-action" title={tr('addAssessment')} onClick={() => setAdding(true)}><Icon name="plus" /></button><button className="icon-action" title={tr('editAssessment')} disabled={!activeAssessment} onClick={() => activeAssessment && setEditing(activeAssessment)}><Icon name="edit" /></button><button className="icon-action danger" title={activeAssessment?.sourceColumnId ? tr('cannotDeleteCopiedAssessment') : tr('deleteAssessment')} disabled={!activeAssessment || Boolean(activeAssessment?.sourceColumnId)} onClick={() => activeAssessment && setAssessmentToDelete(activeAssessment)}><Icon name="trash" /></button></div></header>
+          <header className="assessment-compact-header"><label className="assessment-picker"><select aria-label={tr('availableAssessments')} value={activeAssessment?.id ?? ''} disabled={!activeAssessment} onChange={event => selectAssessment(Number(event.target.value))}>{activeAssessment ? sheet.columns.map(column => <option key={column.id} value={column.id}>{column.name} · {formatDateOnly(column.assessmentDate)} | {column.kind === 'EXAM' ? tr('exam') : tr('continuous')}</option>) : <option value="">{tr('noAssessments')}</option>}</select>{activeAssessment && <b className={`assessment-state ${activeDatePending ? 'date-pending' : activeComplete ? 'complete' : 'incomplete'}`}>{activeDatePending ? tr('assessmentDatePending') : activeComplete ? tr('complete') : tr('incomplete')}</b>}</label><div className="assessment-actions"><button className="icon-action" title={tr('previous')} disabled={!activeAssessment || activeIndex <= 0} onClick={() => selectAssessment(sheet.columns[activeIndex - 1]?.id ?? null)}><Icon name="back" /></button><button className="icon-action next-assessment" title={tr('next')} disabled={!activeAssessment || activeIndex >= sheet.columns.length - 1} onClick={() => selectAssessment(sheet.columns[activeIndex + 1]?.id ?? null)}>→</button><i className="assessment-action-separator" /><button className="icon-action" title={tr('addAssessment')} onClick={() => setAdding(true)}><Icon name="plus" /></button><button className="icon-action" title={tr('editAssessment')} disabled={!activeAssessment} onClick={() => activeAssessment && setEditing(activeAssessment)}><Icon name="edit" /></button><button className="icon-action danger" title={activeAssessment?.sourceColumnId ? tr('cannotDeleteCopiedAssessment') : tr('deleteAssessment')} disabled={!activeAssessment || Boolean(activeAssessment?.sourceColumnId)} onClick={() => activeAssessment && setAssessmentToDelete(activeAssessment)}><Icon name="trash" /></button></div></header>
           {activeAssessment ? <>
-            <div className="table-wrap assessment-table-wrap" tabIndex={0} onCopy={copySelection} onPaste={pasteSelection} onKeyDown={handleGridKeyDown}><table className="data-table assessment-table"><thead><tr><th className="student-column"><span>{tr('student')}</span><small>{sheet.isElective ? tr('electiveStudents') : tr('courseList')}</small></th><th className="grade-column">{tr('grade')}</th><th>{tr('observation')}</th></tr></thead><tbody>{activeStudents.map((student, rowIndex) => {
-              const key = `${student.id}:${activeAssessment.id}`; const missingGrade = !isCompleteGradeValue(sheet.values[key] ?? '', sheet.gradeMode, centerConfiguration.grades);
+            <div className="table-wrap assessment-table-wrap" tabIndex={0} onCopy={copySelection} onPaste={pasteSelection} onKeyDown={handleGridKeyDown} onMouseUp={endCellSelection}><table className="data-table assessment-table"><thead><tr><th className="student-column"><span>{tr('student')}</span><small>{sheet.isElective ? tr('electiveStudents') : tr('courseList')}</small></th><th className="grade-column">{tr('grade')}</th><th>{tr('observation')}</th></tr></thead><tbody>{activeStudents.map((student, rowIndex) => {
+              const key = `${student.id}:${activeAssessment.id}`; const missingGrade = !isCompleteGradeValue(sheet.values[key] ?? '', sheet.gradeMode, centerConfiguration.grades, centerConfiguration.notEvaluatedValue);
               const selected = (column: number) => Boolean(normalized && rowIndex >= normalized.top && rowIndex <= normalized.bottom && column >= normalized.left && column <= normalized.right);
-              const cellEvents = (column: number) => ({ 'data-grid-row': rowIndex, 'data-grid-column': column, onMouseDown: (event: React.MouseEvent) => selectCell(rowIndex, column, event.shiftKey), onMouseEnter: (event: React.MouseEvent) => { if (event.buttons === 1) selectCell(rowIndex, column, true); } });
-              return <tr className={missingGrade ? 'row-incomplete' : ''} key={key}><td className="student-name"><span>{rowIndex + 1}</span>{student.fullName}</td><td className={`grade-cell spreadsheet-cell ${missingGrade ? 'grade-incomplete' : ''} ${selected(0) ? 'cell-selected' : ''}`} {...cellEvents(0)}><CellEditor field="grade" gradeMode={sheet.gradeMode} grades={centerConfiguration.grades} worksheetId={id} studentId={student.id} columnId={activeAssessment.id} initialValue={sheet.values[key] ?? ''} label={`${student.fullName}, ${tr('grade')}`} onValueChange={value => updateLocalValue(student.id, 'grade', value)} /></td><td className={`observation-cell spreadsheet-cell ${selected(1) ? 'cell-selected' : ''}`} {...cellEvents(1)}><CellEditor field="observation" gradeMode={sheet.gradeMode} grades={centerConfiguration.grades} worksheetId={id} studentId={student.id} columnId={activeAssessment.id} initialValue={sheet.observations[key] ?? ''} label={`${student.fullName}, ${tr('observation')}`} onValueChange={value => updateLocalValue(student.id, 'observation', value)} /></td></tr>;
+              const cellEvents = (column: number) => ({ 'data-grid-row': rowIndex, 'data-grid-column': column, onMouseDown: (event: React.MouseEvent) => beginCellSelection(event, rowIndex, column), onMouseEnter: (event: React.MouseEvent) => { if (event.buttons === 1) extendCellSelection(rowIndex, column); } });
+              return <tr className={missingGrade ? 'row-incomplete' : ''} key={key}><td className="student-name"><span>{rowIndex + 1}</span>{student.fullName}</td><td className={`grade-cell spreadsheet-cell ${missingGrade ? 'grade-incomplete' : ''} ${selected(0) ? 'cell-selected' : ''}`} {...cellEvents(0)}><CellEditor field="grade" gradeMode={sheet.gradeMode} grades={centerConfiguration.grades} notEvaluatedValue={centerConfiguration.notEvaluatedValue} worksheetId={id} studentId={student.id} columnId={activeAssessment.id} initialValue={sheet.values[key] ?? ''} label={`${student.fullName}, ${tr('grade')}`} onValueChange={value => updateLocalValue(student.id, 'grade', value)} /></td><td className={`observation-cell spreadsheet-cell ${selected(1) ? 'cell-selected' : ''}`} {...cellEvents(1)}><CellEditor field="observation" gradeMode={sheet.gradeMode} grades={centerConfiguration.grades} notEvaluatedValue={centerConfiguration.notEvaluatedValue} worksheetId={id} studentId={student.id} columnId={activeAssessment.id} initialValue={sheet.observations[key] ?? ''} label={`${student.fullName}, ${tr('observation')}`} onValueChange={value => updateLocalValue(student.id, 'observation', value)} /></td></tr>;
             })}</tbody></table></div>
           </> : <div className="assessment-empty-state"><span><Icon name="sheet" size={28} /></span><div><h2>{tr('noAssessments')}</h2><p>{tr('emptyAssessmentHelp')}</p></div></div>}
         </section>
@@ -273,24 +309,44 @@ function WorksheetPage({ id, navigate, refresh, notify, courses, worksheets, pro
     {adding && <AssessmentModal close={() => setAdding(false)} onSave={input => saveAssessment(input)} />}
     {managingElectiveStudents && <ElectiveStudentsModal sheet={sheet} close={() => setManagingElectiveStudents(false)} save={async enabledStudentIds => { const updated = await window.fullSeguiment.configureElectiveStudents(sheet.id, enabledStudentIds); setSheet(updated); setSelection(null); await refresh(); }} />}
     {editing && <AssessmentModal initial={editing} close={() => setEditing(null)} onSave={input => saveAssessment(input, editing.id)} />}
-    {assessmentToDelete && <ConfirmDeleteModal title={tr('deleteAssessmentTitle')} message={tr('deleteColumn', { name: assessmentToDelete.name })} close={() => setAssessmentToDelete(null)} confirm={() => removeColumn(assessmentToDelete.id)} />}
-    {confirmingSelectionClear && <ConfirmDeleteModal title={tr('clearSelectionTitle')} message={tr('clearSelectionConfirm')} close={() => setConfirmingSelectionClear(false)} confirm={clearSelection} />}
-    {copying && <CopyWorksheetModal subject={sheet.subject} sourceTrimester={sheet.trimester} existingTrimesters={worksheets.filter(item => item.courseLevel === sheet.courseLevel && item.subject === sheet.subject).map(item => item.trimester)} close={() => setCopying(false)} onSave={copyWorksheet} />}
+    {assessmentToDelete && <ConfirmDeleteModal title={tr('deleteAssessmentTitle')} question={tr('deleteAssessmentQuestion')} identifier={assessmentToDelete.name} note={tr('deleteAssessmentNote')} confirmationText={confirmationWord(assessmentToDelete.name)} confirmationPlaceholder={confirmationWord(assessmentToDelete.name)} close={() => setAssessmentToDelete(null)} confirm={() => removeColumn(assessmentToDelete.id)} />}
+    {confirmingSelectionClear && <ConfirmDeleteModal title={tr('clearSelectionTitle')} question={tr('clearSelectionQuestion')} note={tr('clearSelectionNote')} close={() => setConfirmingSelectionClear(false)} confirm={clearSelection} />}
   </>;
 }
 
-function CellEditor({ worksheetId, studentId, columnId, initialValue, label, field, gradeMode, grades, onValueChange }: { worksheetId: number; studentId: number; columnId: number; initialValue: string; label: string; field: CellField; gradeMode: GradeMode; grades: InitialState['centerConfiguration']['grades']; onValueChange: (value: string) => void }) {
+function CellEditor({ worksheetId, studentId, columnId, initialValue, label, field, gradeMode, grades, notEvaluatedValue, onValueChange }: { worksheetId: number; studentId: number; columnId: number; initialValue: string; label: string; field: CellField; gradeMode: GradeMode; grades: InitialState['centerConfiguration']['grades']; notEvaluatedValue: string; onValueChange: (value: string) => void }) {
   const latestValue = useRef(initialValue);
   const timer = useRef<number | null>(null);
+  const [draft, setDraft] = useState(initialValue);
+  const [letterError, setLetterError] = useState(false);
   const save = (next: string) => { if (timer.current !== null) window.clearTimeout(timer.current); timer.current = null; void window.fullSeguiment.saveCell(worksheetId, studentId, columnId, field, next); };
+  const scheduleSave = (next: string) => { if (timer.current !== null) window.clearTimeout(timer.current); timer.current = window.setTimeout(() => save(next), 350); };
   useEffect(() => { latestValue.current = initialValue; }, [initialValue]);
   useEffect(() => () => { if (timer.current !== null) { window.clearTimeout(timer.current); void window.fullSeguiment.saveCell(worksheetId, studentId, columnId, field, latestValue.current); } }, [columnId, field, studentId, worksheetId]);
-  const common = { value: initialValue, 'aria-label': label, onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { const raw = event.target.value; const next = field === 'grade' ? gradeMode === 'NUMERIC' ? normalizeGradeValue(raw) : raw.toLocaleUpperCase().slice(0, 12) : raw; latestValue.current = next; onValueChange(next); if (timer.current !== null) window.clearTimeout(timer.current); timer.current = window.setTimeout(() => save(next), 350); }, onBlur: () => save(initialValue) };
-  const gradeMissing = initialValue.trim() === '';
-  const normalizedGrade = normalizeGradeValue(initialValue);
-  const numericGrade = Number(initialValue.replace(',', '.')); const validGrade = isCompleteGradeValue(initialValue, gradeMode, grades);
-  const gradeClass = gradeMissing ? 'grade-missing' : normalizedGrade === '-' ? 'grade-special' : validGrade && numericGrade >= 5 ? 'grade-pass' : 'grade-fail';
-  if (field === 'grade' && gradeMode === 'LETTER') return <><input {...common} className={`grade-letter ${gradeMissing || !validGrade ? 'grade-missing' : ''}`} type="text" list={`letter-grade-options-${worksheetId}`} maxLength={12} spellCheck={false} autoCapitalize="characters" aria-invalid={!validGrade} /><datalist id={`letter-grade-options-${worksheetId}`}>{grades.map(item => <option key={item.grade} value={item.grade} />)}</datalist></>;
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const raw = event.target.value;
+    const next = field === 'grade' ? gradeMode === 'NUMERIC' ? normalizeGradeValue(raw) : raw.toLocaleUpperCase().slice(0, 12) : raw;
+    if (field === 'grade' && gradeMode === 'LETTER') {
+      const valid = next === '' || isCompleteGradeValue(next, 'LETTER', grades, notEvaluatedValue);
+      setDraft(next); setLetterError(next !== '' && !valid);
+      if (!valid) return;
+    }
+    latestValue.current = next; onValueChange(next); scheduleSave(next);
+  };
+  const handleBlur = () => {
+    if (field === 'grade' && gradeMode === 'LETTER') {
+      if (draft !== '' && !isCompleteGradeValue(draft, 'LETTER', grades, notEvaluatedValue)) { setDraft(initialValue); setLetterError(true); latestValue.current = initialValue; return; }
+      save(draft); return;
+    }
+    save(initialValue);
+  };
+  const common = { value: field === 'grade' && gradeMode === 'LETTER' ? draft : initialValue, 'aria-label': label, onChange: handleChange, onBlur: handleBlur };
+  const displayedGrade = field === 'grade' && gradeMode === 'LETTER' ? draft : initialValue;
+  const gradeMissing = displayedGrade.trim() === '';
+  const normalizedGrade = normalizeGradeValue(displayedGrade);
+  const numericGrade = gradeMode === 'LETTER' ? numericValueForLetterGrade(normalizedGrade, grades) : Number(displayedGrade.replace(',', '.')); const validGrade = isCompleteGradeValue(displayedGrade, gradeMode, grades, notEvaluatedValue);
+  const gradeClass = gradeMissing ? 'grade-missing' : normalizedGrade === normalizeGradeValue(notEvaluatedValue) ? 'grade-neutral' : validGrade && numericGrade !== undefined && numericGrade >= 5 ? 'grade-pass' : 'grade-fail';
+  if (field === 'grade' && gradeMode === 'LETTER') return <><input {...common} className={`grade-letter ${gradeClass} ${letterError ? 'grade-missing' : ''}`} type="text" list={`letter-grade-options-${worksheetId}`} maxLength={12} spellCheck={false} autoCapitalize="characters" aria-invalid={!validGrade || letterError} title={letterError ? tr('invalidLetterGrade') : undefined} /><datalist id={`letter-grade-options-${worksheetId}`}>{grades.map(item => <option key={item.grade} value={item.grade} />)}<option value={notEvaluatedValue} /></datalist></>;
   return field === 'grade' ? <input {...common} className={gradeClass} type="text" maxLength={12} inputMode="decimal" spellCheck={false} autoCapitalize="characters" aria-invalid={!validGrade} /> : <textarea {...common} rows={1} placeholder={tr('observationPlaceholder')} />;
 }
 
@@ -350,28 +406,37 @@ function Settings({ state, refresh, notify, onProfileChange }: { state: InitialS
   useEffect(() => () => { void persistProfile(false); }, [persistProfile]);
   const loadCenterData = async () => {
     const result = await window.fullSeguiment.importCenterData(); if (result.cancelled) return;
-    if (!result.ok) { notify({ type: 'error', text: result.error ?? tr('configurationImportError') }); return; }
+    if (!result.ok) { notify({ type: 'error', text: localizedError(result.error, 'configurationImportError') }); return; }
     await refresh(); notify({ type: 'success', text: tr('centerDataLoaded', { courses: result.courses?.length ?? 0, subjects: result.subjects?.length ?? 0, students: result.students?.length ?? 0 }) });
   };
   const clearCenterData = async () => { await window.fullSeguiment.clearCenterData(); await refresh(); notify({ type: 'success', text: tr('centerDataDeleted') }); };
-  const loadLogo = async () => { const result = await window.fullSeguiment.chooseSchoolLogo(); if (result.cancelled) return; if (!result.ok) { notify({ type: 'error', text: result.error ?? tr('configurationImportError') }); return; } await refresh(); notify({ type: 'success', text: tr('logoLoaded') }); };
+  const loadLogo = async () => { const result = await window.fullSeguiment.chooseSchoolLogo(); if (result.cancelled) return; if (!result.ok) { notify({ type: 'error', text: localizedError(result.error, 'configurationImportError') }); return; } await refresh(); notify({ type: 'success', text: tr('logoLoaded') }); };
   const removeLogo = async () => { await window.fullSeguiment.removeSchoolLogo(); await refresh(); };
   return <>
     <PageHeader eyebrow={tr('localPreferences')} title={tr('settings')} subtitle={tr('settingsHelp')} />
     <section className="panel school-configuration"><div className="panel-heading"><span className="panel-icon"><Icon name="settings" /></span><div><h2>{tr('schoolConfiguration')}</h2><p>{tr('schoolConfigurationHelp')}</p></div></div><div className="configuration-cards">
-      <article className="configuration-card"><div className="configuration-card-heading"><span><Icon name="school" /></span><div><h3>{tr('centerData')}</h3></div></div><div className="configuration-status-list"><small className={`configuration-status ${hasCenterData ? 'loaded' : 'missing'}`}>{hasCenterData ? tr('centerDataLoaded', { courses: state.courses.length, subjects: state.subjects.length, students: state.students.length }) : tr('noCenterData')}</small><small className="configuration-status loaded">{state.centerConfiguration.hasAssessmentWeights ? tr('centerAssessmentConfiguration', { exam: state.centerConfiguration.examWeight, continuous: state.centerConfiguration.continuousAssessmentWeight, format: state.centerConfiguration.finalReportGradeMode === 'LETTER' ? tr('letterGrades') : tr('numericGrades') }) : state.centerConfiguration.hasLetterGrades ? tr('letterGradesConfigured') : tr('numericOnlyConfiguration')}</small></div><div className="configuration-actions"><button className="icon-button danger sheet-card-icon-action configuration-delete" title={tr('deleteCenterData')} aria-label={tr('deleteCenterData')} disabled={!hasCenterData} onClick={() => setDeleteTarget('center')}><Icon name="trash" /></button><button className="icon-button sheet-card-icon-action sheet-export-button configuration-action" title={tr('loadCenterData')} aria-label={tr('loadCenterData')} onClick={() => hasCenterData ? setConfirmingCenterImport(true) : void loadCenterData()}><Icon name="upload" /></button></div></article>
-      <article className="configuration-card"><div className="configuration-card-heading"><span><Icon name="image" /></span><div><h3>{tr('schoolLogo')}</h3></div></div><div className="logo-state-row"><div className="logo-status-preview"><span className={`configuration-status ${state.schoolLogo ? 'loaded' : 'missing'}`} tabIndex={state.schoolLogo ? 0 : undefined}>{state.schoolLogo ? tr('logoLoadedStatus') : tr('noLogoLoaded')}</span>{state.schoolLogo && <div className="logo-hover-preview" role="tooltip"><img src={state.schoolLogo} alt={tr('schoolLogo')} /></div>}</div></div><div className="configuration-actions"><button className="icon-button danger sheet-card-icon-action configuration-delete" title={tr('removeLogo')} aria-label={tr('removeLogo')} disabled={!state.schoolLogo} onClick={() => setDeleteTarget('logo')}><Icon name="trash" /></button><button className="icon-button sheet-card-icon-action sheet-export-button configuration-action" title={tr('loadLogo')} aria-label={tr('loadLogo')} onClick={() => void loadLogo()}><Icon name="upload" /></button></div></article>
+      <article className="configuration-card"><div className="configuration-card-heading"><span><Icon name="school" /></span><div><h3>{tr('centerData')}</h3></div></div><div className={`configuration-status-list ${hasCenterData ? 'loaded' : 'missing'}`}><small className="configuration-status">{hasCenterData ? tr('centerDataLoaded', { courses: state.courses.length, subjects: state.subjects.length, students: state.students.length }) : tr('noCenterData')}</small><small className="configuration-status">{tr(state.centerConfiguration.hasAssessmentWeights ? 'centerAssessmentConfiguration' : 'centerAssessmentConfigurationMissing', { format: state.centerConfiguration.finalReportGradeMode === 'LETTER' ? tr('letterGrades') : tr('numericGrades') })}</small></div><div className="configuration-actions"><button className="icon-button sheet-card-icon-action sheet-export-button configuration-action" title={tr('loadCenterData')} aria-label={tr('loadCenterData')} onClick={() => hasCenterData ? setConfirmingCenterImport(true) : void loadCenterData()}><Icon name="upload" /></button><button className="icon-button danger sheet-card-icon-action configuration-delete" title={tr('deleteCenterData')} aria-label={tr('deleteCenterData')} disabled={!hasCenterData} onClick={() => setDeleteTarget('center')}><Icon name="trash" /></button></div></article>
+      <article className="configuration-card"><div className="configuration-card-heading"><span><Icon name="image" /></span><div><h3>{tr('schoolLogo')}</h3></div></div><div className="logo-state-row"><div className="logo-status-preview"><span className={`configuration-status ${state.schoolLogo ? 'loaded' : 'missing'}`} tabIndex={state.schoolLogo ? 0 : undefined}>{state.schoolLogo ? tr('logoLoadedStatus') : tr('noLogoLoaded')}</span>{state.schoolLogo && <div className="logo-hover-preview" role="tooltip"><img src={state.schoolLogo} alt={tr('schoolLogo')} /></div>}</div></div><div className="configuration-actions"><button className="icon-button sheet-card-icon-action sheet-export-button configuration-action" title={tr('loadLogo')} aria-label={tr('loadLogo')} onClick={() => void loadLogo()}><Icon name="upload" /></button><button className="icon-button danger sheet-card-icon-action configuration-delete" title={tr('removeLogo')} aria-label={tr('removeLogo')} disabled={!state.schoolLogo} onClick={() => setDeleteTarget('logo')}><Icon name="trash" /></button></div></article>
     </div></section>
     <section className="panel teacher-profile-panel"><div className="panel-heading"><span className="panel-icon"><Icon name="teacher" /></span><div><h2>{tr('teacherData')}</h2><p>{tr('teacherDataHelp')}</p></div></div><div className="teacher-profile-fields"><label>{tr('firstName')}<input value={firstName} onChange={e => changeProfile('firstName', e.target.value)} onBlur={() => void persistProfile()} placeholder={tr('yourName')} /></label><label>{tr('lastName')}<input value={lastName} onChange={e => changeProfile('lastName', e.target.value)} onBlur={() => void persistProfile()} placeholder={tr('yourLastName')} /></label><label>{tr('sex')}<select required aria-required="true" value={sex} onChange={event => void changeSex(event.target.value as TeacherSex)}><option value="MALE">{tr('male')}</option><option value="FEMALE">{tr('female')}</option></select></label></div></section>
-    {deleteTarget === 'center' && <ConfirmDeleteModal title={tr('deleteCenterDataTitle')} message={tr('deleteCenterDataConfirm')} close={() => setDeleteTarget(null)} confirm={clearCenterData} />}
-    {deleteTarget === 'logo' && <ConfirmDeleteModal title={tr('removeLogoTitle')} message={tr('removeLogoConfirm')} close={() => setDeleteTarget(null)} confirm={removeLogo} />}
+    {deleteTarget === 'center' && <ConfirmDeleteModal title={tr('deleteCenterDataTitle')} question={tr('deleteCenterDataQuestion')} identifier={tr('centerData')} note={tr('deleteCenterDataNote')} confirmationText="datos" confirmationPlaceholder="datos" close={() => setDeleteTarget(null)} confirm={clearCenterData} />}
+    {deleteTarget === 'logo' && <ConfirmDeleteModal title={tr('removeLogoTitle')} question={tr('removeLogoQuestion')} identifier={tr('schoolLogo')} note={tr('removeLogoNote')} confirmationText="logo" confirmationPlaceholder="logo" close={() => setDeleteTarget(null)} confirm={removeLogo} />}
     {confirmingCenterImport && <ConfirmActionModal title={tr('loadCenterData')} message={tr('replaceCenterDataWarning')} close={() => setConfirmingCenterImport(false)} confirm={loadCenterData} />}
   </>;
 }
 
 function HelpPage() {
   const [route, setRoute] = useState<'start' | 'teacher' | 'tutor'>('start');
-  const headers = 'Course;Subjects;Students';
+  const examples: Record<AppLanguage, { headers: string; course: string; subjects: [string, string]; students: [string, string] }> = {
+    es: { headers: 'Curso;Asignaturas;Alumnos', course: '1.º ESO', subjects: ['Lengua Castellana', 'Matemáticas'], students: ['Ana Pérez', 'Marcos López'] },
+    ca: { headers: 'Curs;Assignatures;Alumnes', course: '1r ESO', subjects: ['Llengua Catalana', 'Matemàtiques'], students: ['Anna Pérez', 'Marc López'] },
+    en: { headers: 'Course;Subjects;Students', course: 'Year 1 ESO', subjects: ['English Language', 'Mathematics'], students: ['Anna Smith', 'Mark Jones'] },
+    eu: { headers: 'Maila;Irakasgaiak;Ikasleak', course: 'DBH 1', subjects: ['Euskara', 'Matematika'], students: ['Ane Agirre', 'Mikel Arrieta'] },
+    gl: { headers: 'Curso;Materias;Alumnos', course: '1.º ESO', subjects: ['Lingua Galega', 'Matemáticas'], students: ['Ana Pérez', 'Marcos López'] }
+  };
+  const example = examples[getActiveLanguage()];
+  const csvExample = `${example.headers}\n${example.course};${example.subjects.join('|')};${example.students.join('|')}`;
+  const jsonExample = JSON.stringify({ courses: [{ name: example.course, subjects: example.subjects, students: example.students }] }, null, 2);
   type HelpStep = { title: string; description: string; details?: string[] };
   const guides: Record<typeof route, { icon: Parameters<typeof Icon>[0]['name']; title: string; subtitle: string; steps: HelpStep[] }> = {
     start: { icon: 'settings', title: tr('helpGettingStarted'), subtitle: tr('helpGettingStartedText'), steps: [
@@ -403,7 +468,7 @@ function HelpPage() {
     </nav>
     <div className="help-grid help-guide-grid">
       <section className="help-card help-guide-card"><div className="help-card-title"><span><Icon name={guide.icon} /></span><div><h2>{guide.title}</h2><p>{guide.subtitle}</p></div></div><div className="help-topic-list">{guide.steps.map((step, index) => <article key={`${route}-${step.title}`}><b>{index + 1}</b><div><strong>{step.title}</strong><span>{step.description}</span>{step.details && <ol className="help-substeps">{step.details.map((detail, detailIndex) => <li key={detail}><b>{index + 1}.{detailIndex + 1}</b><span>{detail}</span></li>)}</ol>}</div></article>)}</div></section>
-      {route === 'start' && <section className="help-card help-format-card"><div className="help-card-title"><span><Icon name="sheet" /></span><div><h2>{tr('helpDataFormats')}</h2><p>{tr('helpCenterDataText')}</p></div></div><div className="help-formats"><FormatExample title="CSV" code={`${headers}\n3r ESO;Llengua Catalana|Matemàtiques;Anna Pérez|Marc López\n4t ESO;Llengua Catalana|Tecnologia;Laia García|Pau Soler`} note={tr('helpListSeparator')} /><FormatExample title="JSON" code={'{\n  "courses": [\n    {\n      "name": "3r ESO",\n      "subjects": ["Llengua Catalana", "Matemàtiques"],\n      "students": ["Anna Pérez", "Marc López"]\n    }\n  ]\n}'} note={tr('helpJsonKeysNote')} /><div className="format-example image-format-example"><strong>{tr('imageFile')}</strong><div><b>PNG · JPG · JPEG · WEBP</b></div><aside className="format-note">{tr('helpLogoFormat')}</aside></div></div></section>}
+      {route === 'start' && <section className="help-card help-format-card"><div className="help-card-title"><span><Icon name="sheet" /></span><div><h2>{tr('helpDataFormats')}</h2><p>{tr('helpCenterDataText')}</p></div></div><div className="help-formats"><FormatExample title="CSV" code={csvExample} note={tr('helpListSeparator')} /><FormatExample title="JSON" code={jsonExample} note={tr('helpJsonKeysNote')} /><div className="format-example image-format-example"><strong>{tr('imageFile')}</strong><div><b>PNG · JPG · JPEG · WEBP</b></div><aside className="format-note">{tr('helpLogoFormat')}</aside></div></div></section>}
     </div>
   </>;
 }
@@ -434,7 +499,7 @@ function TutorDashboard({ state, navigate, refresh, notify }: { state: InitialSt
     try {
       const result = await window.fullSeguiment.exportTrackingReports(reportId);
       if (result.ok) notify({ type: 'success', text: tr('reportsExportedWithCombined', { count: result.count ?? 0 }) });
-      else if (result.code !== 'CANCELLED') notify({ type: 'error', text: result.code === 'NO_IMPORTED_DELIVERIES' ? tr('noImportedDeliveries') : result.error ?? tr('importError') });
+      else if (result.code !== 'CANCELLED') notify({ type: 'error', text: result.code === 'NO_IMPORTED_DELIVERIES' ? tr('noImportedDeliveries') : localizedError(result.error, 'importError') });
     } finally { setGeneratingReportId(null); }
   };
   const readyReports = reports.filter(report => trackingProgress(state, report.course, report.deliveries).complete).length;
@@ -455,7 +520,7 @@ function TutorDashboard({ state, navigate, refresh, notify }: { state: InitialSt
       })}</div></div>;
     })}</section>)}</div>}
     {importOpen && <ImportModal close={() => setImportOpen(false)} refresh={refresh} notify={notify} />}
-    {reportToDelete && <ConfirmDeleteModal title={tr('deleteReportTitle')} message={tr('deleteReportConfirm', { report: `${courseName(state, reportToDelete.courseLevel)} · ${trimesterUi(reportToDelete.trimester)} · ${reportUi(reportToDelete.sequence)}` })} close={() => setReportToDelete(null)} confirm={deleteReport} />}
+    {reportToDelete && <ConfirmDeleteModal title={tr('deleteReportTitle')} question={tr('deleteReportQuestion')} identifier={`${courseName(state, reportToDelete.courseLevel)} · ${trimesterUi(reportToDelete.trimester)} · ${reportUi(reportToDelete.sequence)}`} note={tr('deleteReportNote')} confirmationText={confirmationWord(reportUi(reportToDelete.sequence))} confirmationPlaceholder={confirmationWord(reportUi(reportToDelete.sequence))} close={() => setReportToDelete(null)} confirm={deleteReport} />}
   </>;
 }
 
@@ -464,6 +529,7 @@ function TutorReportPage({ state, reportId, navigate, refresh, notify }: { state
   const [importOpen, setImportOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [deliveryToDelete, setDeliveryToDelete] = useState<ImportedWorksheetSummary | null>(null);
+  const [deliveryToExclude, setDeliveryToExclude] = useState<ImportedWorksheetSummary | null>(null);
   const report = state.trackingReports.find(item => item.id === reportId);
   if (!report) return <Empty icon="sheet" title={tr('noTrackingReports')} text={tr('noTrackingReportsHelp')} />;
   const course = report.courseLevel; const trimester = report.trimester;
@@ -473,10 +539,14 @@ function TutorReportPage({ state, reportId, navigate, refresh, notify }: { state
   const students = state.students.filter(student => student.courseLevel === course).sort((a, b) => a.sortOrder - b.sortOrder);
   const subjects = courseSubjects(state, course); const progress = trackingProgress(state, course, received); const comments = tutorCommentProgress(state, reportId, course); const complete = progress.complete;
   const deleteDelivery = async () => { if (!deliveryToDelete) return; await window.fullSeguiment.deleteImportedWorksheet(deliveryToDelete.id); await refresh(); if (received.length === 1) navigate({ page: 'dashboard' }); notify({ type: 'success', text: tr('deliveryDeleted') }); };
-  const toggleDeliveryBlocking = async (delivery: ImportedWorksheetSummary) => {
-    const updated = await window.fullSeguiment.setImportedWorksheetBlocking(delivery.id, !delivery.isBlocking);
+  const updateDeliveryBlocking = async (delivery: ImportedWorksheetSummary, isBlocking: boolean) => {
+    const updated = await window.fullSeguiment.setImportedWorksheetBlocking(delivery.id, isBlocking);
     await refresh();
-    notify({ type: 'success', text: tr(updated.isBlocking ? 'deliveryIncluded' : 'deliveryExcludedSuccess') });
+    if (!updated.isBlocking) notify({ type: 'success', text: tr('deliveryExcludedSuccess') });
+  };
+  const requestDeliveryBlockingChange = (delivery: ImportedWorksheetSummary) => {
+    if (delivery.isBlocking) setDeliveryToExclude(delivery);
+    else void updateDeliveryBlocking(delivery, true);
   };
   const renderSubjectStatus = (subject: string) => {
     const item = received.find(delivery => delivery.subject === subject);
@@ -484,9 +554,9 @@ function TutorReportPage({ state, reportId, navigate, refresh, notify }: { state
     const excluded = item?.isBlocking === false;
     return <div className={`subject-status-item ${excluded ? 'excluded' : ''}`} key={subject}>
       <button className={`subject-status-main ${subjectReady ? 'received' : ''} ${excluded ? 'excluded' : ''}`} disabled={!item} title={item ? tr('viewDelivery') : tr('pending')} onClick={() => item && navigate({ page: 'imported', id: item.id })}>
-        <span className="status-icon"><Icon name={subjectReady ? 'check' : 'x'} /></span><strong>{subjectUi(subject)}</strong>{item ? <small>{item.teacherFirstName} {item.teacherLastName} · {tr(excluded ? 'deliveryExcluded' : 'deliveryBlocking')}</small> : <small>{tr('pending')}</small>}
+        <span className="status-icon"><Icon name={subjectReady ? 'check' : 'x'} /></span><strong>{subjectUi(subject)}</strong>{item ? <small>{item.teacherFirstName} {item.teacherLastName}{excluded && <span className="delivery-excluded-label">{tr('deliveryExcluded')}</span>}</small> : <small>{tr('pending')}</small>}
       </button>
-      <button className={`icon-button sheet-card-icon-action delivery-blocking-toggle ${excluded ? 'is-excluded' : 'is-blocking'}`} disabled={!item || readOnly} title={item ? tr(excluded && !readOnly ? 'includeDelivery' : !readOnly ? 'excludeDelivery' : 'readOnly') : tr('pending')} aria-label={`${tr(excluded && !readOnly ? 'includeDelivery' : !readOnly ? 'excludeDelivery' : 'readOnly')}: ${subjectUi(subject)}`} onClick={() => item && !readOnly && void toggleDeliveryBlocking(item)}><Icon name={excluded ? 'x' : 'check'} /></button>
+      <button className={`icon-button sheet-card-icon-action delivery-blocking-toggle ${excluded ? 'is-excluded' : 'is-blocking'}`} disabled={!item || readOnly} title={item ? tr(excluded && !readOnly ? 'includeDelivery' : !readOnly ? 'excludeDelivery' : 'readOnly') : tr('pending')} aria-label={`${tr(excluded && !readOnly ? 'includeDelivery' : !readOnly ? 'excludeDelivery' : 'readOnly')}: ${subjectUi(subject)}`} onClick={() => item && !readOnly && requestDeliveryBlockingChange(item)}><Icon name={excluded ? 'x' : 'check'} /></button>
       <button className="icon-button sheet-card-icon-action delivery-view" disabled={!item} title={item ? tr('viewDelivery') : tr('pending')} aria-label={`${tr('viewDelivery')}: ${subjectUi(subject)}`} onClick={() => item && navigate({ page: 'imported', id: item.id })}><Icon name="view" /></button>
       <button className="icon-button danger sheet-card-icon-action delivery-delete" disabled={!item || readOnly} title={item ? tr(readOnly ? 'readOnly' : 'deleteDelivery') : tr('pending')} aria-label={`${tr(readOnly ? 'readOnly' : 'deleteDelivery')}: ${subjectUi(subject)}`} onClick={() => item && !readOnly && setDeliveryToDelete(item)}><Icon name="trash" /></button>
     </div>;
@@ -496,7 +566,7 @@ function TutorReportPage({ state, reportId, navigate, refresh, notify }: { state
     try {
       const result = await window.fullSeguiment.exportTrackingReports(reportId);
       if (result.ok) notify({ type: 'success', text: tr('reportsExportedWithCombined', { count: result.count ?? 0 }) });
-      else if (result.code !== 'CANCELLED') notify({ type: 'error', text: result.code === 'NO_IMPORTED_DELIVERIES' ? tr('noImportedDeliveries') : result.error ?? tr('importError') });
+      else if (result.code !== 'CANCELLED') notify({ type: 'error', text: result.code === 'NO_IMPORTED_DELIVERIES' ? tr('noImportedDeliveries') : localizedError(result.error, 'importError') });
     } finally { setGenerating(false); }
   };
   return <>
@@ -505,7 +575,8 @@ function TutorReportPage({ state, reportId, navigate, refresh, notify }: { state
     <div className="filters tutor-report-progress"><div className="progress-summary"><strong>{progress.receivedCount}/{progress.total} {tr('subjectsReceived')} · {comments.count}/{comments.total} {tr('tutorComments')}</strong><div><i style={{ width: `${progress.total ? progress.receivedCount / progress.total * 100 : 0}%` }} /></div></div></div>
     <section className="status-panel"><div className="status-heading"><div><h2>{reportUi(report.sequence)}</h2><p>{tr('teachingTeamStatus')}</p></div><span className={complete ? 'complete' : 'pending'}>{complete ? tr('complete') : tr('inProgress')}</span></div><div className="subject-status-list">{subjects.map(renderSubjectStatus)}</div><section className="tutor-observations-panel"><header><h3>{tr('tutorObservations')}</h3><p>{tr('tutorObservationsHelp')}</p></header><div className="table-wrap tutor-observation-table-wrap"><table className="data-table tutor-observation-table"><thead><tr><th className="student-column">{tr('student')}</th><th>{tr('observation')}</th></tr></thead><tbody>{students.map((student, index) => { const key = `${reportId}:${student.id}`; return <tr key={key}><td className="student-name"><span>{index + 1}</span>{student.fullName}</td><td><TutorObservationEditor readOnly={readOnly} reportId={reportId} studentId={student.id} initialValue={tutorObservations[key] ?? ''} label={`${student.fullName}, ${tr('tutorObservations')}`} onValueChange={value => setTutorObservations(current => ({ ...current, [key]: value }))} /></td></tr>; })}</tbody></table>{students.length === 0 && <div className="table-empty">{tr('noCourseStudents')}</div>}</div></section><div className="status-generate"><button type="button" className="primary tutor-generate-button" disabled={!complete || generating} title={!complete ? tr('reportIncomplete') : tr('generateTrackingSheets')} onClick={() => void generateReports()}><Icon name="pdf" /> {tr('generateTrackingSheets')}</button></div></section>
     {importOpen && <ImportModal course={courseName(state, course)} trimester={trimesterOptionUi(trimester)} close={() => setImportOpen(false)} refresh={refresh} notify={notify} />}
-    {deliveryToDelete && <ConfirmDeleteModal title={tr('deleteDeliveryTitle')} message={tr('deleteDeliveryConfirm', { subject: subjectUi(deliveryToDelete.subject) })} confirmationText={deliveryToDelete.subject} close={() => setDeliveryToDelete(null)} confirm={deleteDelivery} />}
+    {deliveryToDelete && <ConfirmDeleteModal title={tr('deleteDeliveryTitle')} question={tr('deleteDeliveryQuestion')} identifier={subjectUi(deliveryToDelete.subject)} note={tr('deleteDeliveryNote')} confirmationText={confirmationWord(subjectUi(deliveryToDelete.subject))} confirmationPlaceholder={confirmationWord(subjectUi(deliveryToDelete.subject))} close={() => setDeliveryToDelete(null)} confirm={deleteDelivery} />}
+    {deliveryToExclude && <ConfirmExcludeModal subject={deliveryToExclude.subject} close={() => setDeliveryToExclude(null)} confirm={() => updateDeliveryBlocking(deliveryToExclude, false)} />}
   </>;
 }
 
@@ -524,13 +595,13 @@ function ImportModal({ course, trimester, close, refresh, notify }: { course?: s
   const commit = async (result: Extract<ImportAnalysis, { ok: true }>) => {
     const saved = await window.fullSeguiment.commitImport(result.data);
     if (saved.ok) { await refresh(); setResults(current => current.filter(item => item !== result)); notify({ type: 'success', text: saved.replaced ? tr('replaced') : tr('importOk') }); }
-    else notify({ type: 'error', text: saved.error ?? tr('importError') });
+    else notify({ type: 'error', text: localizedError(saved.error, 'importError') });
   };
   const commitAll = async () => { for (const result of results) if (result.ok) await commit(result); };
   return <Modal title={tr('importDeliveries')} subtitle={course && trimester ? `${tr('course')}: ${course} · ${tr('trimester')}: ${trimester}` : tr('importHelp')} close={close} className="import-modal">
     <div className={`drop-zone ${dragging ? 'dragging' : ''}`} onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); void analyze(Array.from(e.dataTransfer.files).map(file => window.fullSeguiment.getDroppedFilePath(file))); }}><span><Icon name="upload" size={30} /></span><h2>{tr('dropFiles')}</h2><p>{tr('multiFiles')}</p><button className="secondary" onClick={() => void choose()}>{tr('selectFiles')}</button><small>{tr('onlyFull')}</small></div>
     {busy && <div className="analyzing"><div className="spinner" /> {tr('validating')}</div>}
-    {results.length > 0 && <section className="import-results"><div className="results-heading"><div><h2>{tr('validationResult')}</h2><p>{tr('prepared', { ok: results.filter(r => r.ok).length, bad: results.filter(r => !r.ok).length })}</p></div>{results.filter(r => r.ok).length > 1 && <button className="primary" onClick={() => void commitAll()}>{tr('importValid')}</button>}</div>{results.map((result, index) => <article className={`result-card ${result.ok ? 'valid' : 'invalid'}`} key={`${result.path}-${index}`}><span className="result-icon"><Icon name={result.ok ? 'check' : 'x'} /></span><div>{result.ok ? <><strong>{result.data.course.name} · {trimesterUi(result.data.trimester.id)} · {result.data.subject.name}</strong><p>{tr('teacherLabel')} {result.data.teacher.firstName} {result.data.teacher.lastName} · {result.data.students.length} · {result.data.columns.length}</p>{result.duplicate && <span className="duplicate-tag">{tr('duplicateReplace')}</span>}</> : <><strong>{tr('cannotImport')}</strong><p>{result.error}</p>{result.missingInFile && result.missingInFile.length > 0 && <div className="difference"><b>{tr('missingTutor')}</b>{result.missingInFile.map((name, i) => <span key={`${name}-${i}`}>{name}</span>)}</div>}{result.extraInFile && result.extraInFile.length > 0 && <div className="difference"><b>{tr('missingFile')}</b>{result.extraInFile.map((name, i) => <span key={`${name}-${i}`}>{name}</span>)}</div>}</>}</div>{result.ok && <button className="primary compact" onClick={() => void commit(result)}>{result.duplicate ? tr('importReplace') : tr('importAction')}</button>}</article>)}</section>}
+    {results.length > 0 && <section className="import-results"><div className="results-heading"><div><h2>{tr('validationResult')}</h2><p>{tr('prepared', { ok: results.filter(r => r.ok).length, bad: results.filter(r => !r.ok).length })}</p></div>{results.filter(r => r.ok).length > 1 && <button className="primary" onClick={() => void commitAll()}>{tr('importValid')}</button>}</div>{results.map((result, index) => <article className={`result-card ${result.ok ? 'valid' : 'invalid'}`} key={`${result.path}-${index}`}><span className="result-icon"><Icon name={result.ok ? 'check' : 'x'} /></span><div>{result.ok ? <><strong>{result.data.course.name} · {trimesterUi(result.data.trimester.id)} · {result.data.subject.name}</strong><p>{tr('teacherLabel')} {result.data.teacher.firstName} {result.data.teacher.lastName} · {result.data.students.length} · {result.data.columns.length}</p>{result.duplicate && <span className="duplicate-tag">{tr('duplicateReplace')}</span>}</> : <><strong>{tr('cannotImport')}</strong><p>{localizedError(result.error, 'importError')}</p>{result.missingInFile && result.missingInFile.length > 0 && <div className="difference"><b>{tr('missingTutor')}</b>{result.missingInFile.map((name, i) => <span key={`${name}-${i}`}>{name}</span>)}</div>}{result.extraInFile && result.extraInFile.length > 0 && <div className="difference"><b>{tr('missingFile')}</b>{result.extraInFile.map((name, i) => <span key={`${name}-${i}`}>{name}</span>)}</div>}</>}</div>{result.ok && <button className="primary compact" onClick={() => void commit(result)}>{result.duplicate ? tr('importReplace') : tr('importAction')}</button>}</article>)}</section>}
   </Modal>;
 }
 
@@ -540,18 +611,36 @@ function ImportedPage({ id, navigate, state }: { id: number; navigate: (v: View)
   if (!item) return <div className="page-loader"><div className="spinner" /></div>;
   const gradeMode = item.payload.subject.gradeMode ?? 'NUMERIC';
   return <><div className="sheet-toolbar"><button className="back-button" onClick={() => navigate({ page: 'tutor-report', reportId: item.reportId })}><Icon name="back" /> {tr('backSummary')}</button><span className="readonly-tag">{tr('readOnly')}</span></div><PageHeader eyebrow={`${courseName(state, item.courseLevel)} · ${trimesterUi(item.trimester)}`} title={subjectUi(item.subject)} subtitle={`${tr('teacherLabel')} ${item.teacherFirstName} ${item.teacherLastName} · ${tr('imported')} ${formatDate(item.importedAt)}`} />
-    <div className="table-wrap readonly imported-delivery-table"><table className="data-table"><thead><tr><th className="student-column">{tr('student')}</th>{item.payload.columns.map(column => <th key={column.id}><span>{column.name}</span><small>{column.kind === 'EXAM' ? tr('exam') : tr('continuous')} · {formatDateOnly(column.assessmentDate ?? '')}</small></th>)}</tr></thead><tbody>{item.isBlocking ? item.payload.students.map((student, index) => <tr className={student.enabled === false ? 'student-disabled' : ''} key={`${student.name}-${index}`}><td className="student-name"><span>{index + 1}</span>{student.name}{student.enabled === false && <em>{tr('notEnrolled')}</em>}</td>{item.payload.columns.map(column => { const grade = student.values[column.id] ?? ''; const observation = student.observations?.[column.id] ?? ''; return <td key={column.id}><div className="imported-result-cell"><strong className={`imported-grade ${importedGradeTone(grade, gradeMode)}`}>{grade || '—'}</strong><p>{observation || '—'}</p></div></td>; })}</tr>) : <tr><td className="imported-delivery-excluded" colSpan={item.payload.columns.length + 1}>{tr('deliveryExcludedNotice')}</td></tr>}</tbody></table></div>
+    <div className="table-wrap readonly imported-delivery-table"><table className="data-table"><thead><tr><th className="student-column">{tr('student')}</th>{item.payload.columns.map(column => <th key={column.id}><span>{column.name}</span><small>{column.kind === 'EXAM' ? tr('exam') : tr('continuous')} · {formatDateOnly(column.assessmentDate ?? '')}</small></th>)}</tr></thead><tbody>{item.isBlocking ? item.payload.students.map((student, index) => <tr className={student.enabled === false ? 'student-disabled' : ''} key={`${student.name}-${index}`}><td className="student-name"><span>{index + 1}</span>{student.name}{student.enabled === false && <em>{tr('notEnrolled')}</em>}</td>{item.payload.columns.map(column => { const grade = student.values[column.id] ?? ''; const observation = student.observations?.[column.id] ?? ''; return <td key={column.id}><div className="imported-result-cell"><strong className={`imported-grade ${importedGradeTone(grade, gradeMode, state.centerConfiguration.grades, state.centerConfiguration.notEvaluatedValue)}`}>{grade || '—'}</strong><p>{observation || '—'}</p></div></td>; })}</tr>) : <tr><td className="imported-delivery-excluded" colSpan={item.payload.columns.length + 1}>{tr('deliveryExcludedNotice')}</td></tr>}</tbody></table></div>
   </>;
 }
 
 function Empty({ icon, title, text, action }: { icon: Parameters<typeof Icon>[0]['name']; title: string; text: string; action?: React.ReactNode }) { return <div className="empty"><span><Icon name={icon} size={32} /></span><h2>{title}</h2><p>{text}</p>{action}</div>; }
 function Modal({ title, subtitle, close, children, className = '' }: { title: string; subtitle: string; close: () => void; children: React.ReactNode; className?: string }) { return <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) close(); }}><div className={`modal ${className}`}><button className="modal-close" onClick={close}><Icon name="x" /></button><h2>{title}</h2><p>{subtitle}</p><div className="modal-body">{children}</div></div></div>; }
 
-function ConfirmDeleteModal({ title, message, confirmationText, close, confirm }: { title: string; message: string; confirmationText?: string; close: () => void; confirm: () => void | Promise<void> }) {
+const normalizeConfirmation = (value: string) => value.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
+const confirmationWord = (value: string) => normalizeConfirmation(value).split(/\s+/)[0] ?? '';
+
+function ConfirmDeleteModal({ title, question, identifier, note, confirmationText, confirmationPlaceholder, confirmLabel, close, confirm }: { title: string; question: string; identifier?: string; note?: string; confirmationText?: string; confirmationPlaceholder?: string; confirmLabel?: string; close: () => void; confirm: () => void | boolean | Promise<void | boolean> }) {
   const [busy, setBusy] = useState(false); const [typed, setTyped] = useState('');
-  const matches = !confirmationText || typed.trim().toLocaleLowerCase() === confirmationText.trim().toLocaleLowerCase();
-  const accept = async () => { if (!matches) return; setBusy(true); try { await confirm(); close(); } finally { setBusy(false); } };
-  return <div className="modal-backdrop" onMouseDown={event => { if (!busy && event.target === event.currentTarget) close(); }}><div className="modal confirm-delete-modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-delete-title" aria-describedby="confirm-delete-message"><span className="confirm-delete-icon"><Icon name="trash" size={24} /></span><h2 id="confirm-delete-title">{title}</h2><p id="confirm-delete-message" className="confirm-delete-message">{message}</p>{confirmationText && <label className="delete-confirmation-input">{tr('deleteConfirmationPrompt', { subject: confirmationText })}<input autoFocus value={typed} disabled={busy} placeholder={tr('deleteConfirmationPlaceholder')} onChange={event => setTyped(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && matches) void accept(); }} /></label>}<div className="modal-actions"><button className="secondary" autoFocus={!confirmationText} disabled={busy} onClick={close}>{tr('cancel')}</button><button className="danger-confirm" disabled={busy || !matches} onClick={() => void accept()}><Icon name="trash" /> {tr('confirmDelete')}</button></div></div></div>;
+  const matches = !confirmationText || normalizeConfirmation(typed) === normalizeConfirmation(confirmationText);
+  const accept = async () => { if (!matches) return; setBusy(true); try { if (await confirm() !== false) close(); } finally { setBusy(false); } };
+  return <div className="modal-backdrop" onMouseDown={event => { if (!busy && event.target === event.currentTarget) close(); }}><div className="modal confirm-delete-modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-delete-title" aria-describedby="confirm-delete-question"><h2 id="confirm-delete-title">{title}</h2><p id="confirm-delete-question" className="confirm-delete-message">{question}</p>{identifier && <div className="confirm-delete-identifier">{identifier}</div>}{confirmationText && <label className="delete-confirmation-input">{tr('deleteConfirmationPrompt', { subject: confirmationText })}<input autoFocus value={typed} disabled={busy} placeholder={confirmationPlaceholder ?? tr('deleteConfirmationPlaceholder')} onChange={event => setTyped(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && matches) void accept(); }} /></label>}{note && <aside className="confirm-delete-note">{note}</aside>}<div className="modal-actions"><button className="secondary" autoFocus={!confirmationText} disabled={busy} onClick={close}>{tr('cancel')}</button><button className="danger-confirm" disabled={busy || !matches} onClick={() => void accept()}>{confirmLabel ?? tr('confirmDelete')}</button></div></div></div>;
+}
+
+function ConfirmExcludeModal({ subject, close, confirm }: { subject: string; close: () => void; confirm: () => void | Promise<void> }) {
+  const [busy, setBusy] = useState(false); const [typed, setTyped] = useState(''); const [error, setError] = useState('');
+  const displaySubject = subjectUi(subject);
+  const confirmationText = confirmationWord(displaySubject);
+  const matches = normalizeConfirmation(typed) === confirmationText;
+  const accept = async () => {
+    if (!matches) return;
+    setBusy(true); setError('');
+    try { await confirm(); close(); }
+    catch { setError(tr('excludeDeliveryError')); }
+    finally { setBusy(false); }
+  };
+  return <div className="modal-backdrop" onMouseDown={event => { if (!busy && event.target === event.currentTarget) close(); }}><div className="modal confirm-delete-modal confirm-exclude-modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-exclude-title" aria-describedby="confirm-exclude-message"><h2 id="confirm-exclude-title">{tr('excludeDeliveryTitle')}</h2><p id="confirm-exclude-message" className="confirm-delete-message">{tr('excludeDeliveryQuestion')}</p><div className="confirm-delete-identifier">{displaySubject}</div><label className="delete-confirmation-input">{tr('excludeConfirmationPrompt', { subject: confirmationText })}<input autoFocus value={typed} disabled={busy} placeholder={confirmationText} onChange={event => setTyped(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && matches) void accept(); }} /></label>{error && <div className="inline-error"><Icon name="x" />{error}</div>}<aside className="confirm-delete-note">{tr('excludeDeliveryNote')}</aside><div className="modal-actions"><button className="secondary" disabled={busy} onClick={close}>{tr('cancel')}</button><button className="exclude-confirm" disabled={busy || !matches} onClick={() => void accept()}>{tr('confirmExclude')}</button></div></div></div>;
 }
 
 function ConfirmActionModal({ title, message, close, confirm }: { title: string; message: string; close: () => void; confirm: () => void | Promise<void> }) {

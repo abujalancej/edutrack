@@ -7,8 +7,8 @@ import type { AppLanguage, AssessmentKind, CenterConfiguration, ConfiguredCourse
 
 type Row = Record<string, any>;
 
-const isCompleteImportedGrade = (value: string, mode: GradeMode, grades: CenterConfiguration['grades']) => {
-  return isCompleteGradeValue(value, mode, grades);
+const isCompleteImportedGrade = (value: string, mode: GradeMode, grades: CenterConfiguration['grades'], notEvaluatedValue: string) => {
+  return isCompleteGradeValue(value, mode, grades, notEvaluatedValue);
 };
 
 const normalizeImportedNumericGrades = (data: FullSeguimentExport): FullSeguimentExport => {
@@ -41,8 +41,8 @@ export class AppDatabase {
       INSERT OR IGNORE INTO teacher_profile (id) VALUES (1);
       CREATE TABLE IF NOT EXISTS app_preferences (
         id INTEGER PRIMARY KEY CHECK (id = 1), language TEXT NOT NULL DEFAULT 'es', school_logo TEXT NOT NULL DEFAULT '',
-        exam_weight REAL NOT NULL DEFAULT 70, continuous_assessment_weight REAL NOT NULL DEFAULT 30,
-        final_report_grade_mode TEXT NOT NULL DEFAULT 'NUMERIC', grades_json TEXT NOT NULL DEFAULT '[]',
+        exam_weight REAL NOT NULL DEFAULT 0, continuous_assessment_weight REAL NOT NULL DEFAULT 0,
+        final_report_grade_mode TEXT NOT NULL DEFAULT 'NUMERIC', not_evaluated_value TEXT NOT NULL DEFAULT '-', grades_json TEXT NOT NULL DEFAULT '[]', grades_explanation_json TEXT NOT NULL DEFAULT '{}',
         has_assessment_weights INTEGER NOT NULL DEFAULT 0, has_letter_grades INTEGER NOT NULL DEFAULT 0
       );
       INSERT OR IGNORE INTO app_preferences (id, language) VALUES (1, 'es');
@@ -108,10 +108,12 @@ export class AppDatabase {
     if (!valueInfo.some(column => column.name === 'observation')) this.db.exec("ALTER TABLE worksheet_values ADD COLUMN observation TEXT NOT NULL DEFAULT ''");
     const preferenceInfo = this.db.prepare('PRAGMA table_info(app_preferences)').all() as Row[];
     if (!preferenceInfo.some(column => column.name === 'school_logo')) this.db.exec("ALTER TABLE app_preferences ADD COLUMN school_logo TEXT NOT NULL DEFAULT ''");
-    if (!preferenceInfo.some(column => column.name === 'exam_weight')) this.db.exec('ALTER TABLE app_preferences ADD COLUMN exam_weight REAL NOT NULL DEFAULT 70');
-    if (!preferenceInfo.some(column => column.name === 'continuous_assessment_weight')) this.db.exec('ALTER TABLE app_preferences ADD COLUMN continuous_assessment_weight REAL NOT NULL DEFAULT 30');
+    if (!preferenceInfo.some(column => column.name === 'exam_weight')) this.db.exec('ALTER TABLE app_preferences ADD COLUMN exam_weight REAL NOT NULL DEFAULT 0');
+    if (!preferenceInfo.some(column => column.name === 'continuous_assessment_weight')) this.db.exec('ALTER TABLE app_preferences ADD COLUMN continuous_assessment_weight REAL NOT NULL DEFAULT 0');
     if (!preferenceInfo.some(column => column.name === 'final_report_grade_mode')) this.db.exec("ALTER TABLE app_preferences ADD COLUMN final_report_grade_mode TEXT NOT NULL DEFAULT 'NUMERIC'");
+    if (!preferenceInfo.some(column => column.name === 'not_evaluated_value')) this.db.exec("ALTER TABLE app_preferences ADD COLUMN not_evaluated_value TEXT NOT NULL DEFAULT '-'");
     if (!preferenceInfo.some(column => column.name === 'grades_json')) this.db.exec("ALTER TABLE app_preferences ADD COLUMN grades_json TEXT NOT NULL DEFAULT '[]'");
+    if (!preferenceInfo.some(column => column.name === 'grades_explanation_json')) this.db.exec("ALTER TABLE app_preferences ADD COLUMN grades_explanation_json TEXT NOT NULL DEFAULT '{}'");
     if (!preferenceInfo.some(column => column.name === 'has_assessment_weights')) this.db.exec('ALTER TABLE app_preferences ADD COLUMN has_assessment_weights INTEGER NOT NULL DEFAULT 0');
     if (!preferenceInfo.some(column => column.name === 'has_letter_grades')) this.db.exec('ALTER TABLE app_preferences ADD COLUMN has_letter_grades INTEGER NOT NULL DEFAULT 0');
     const worksheetInfo = this.db.prepare('PRAGMA table_info(worksheets)').all() as Row[];
@@ -210,14 +212,14 @@ export class AppDatabase {
   getSchoolLogo() { return (this.db.prepare('SELECT school_logo FROM app_preferences WHERE id = 1').get() as Row).school_logo as string; }
   saveSchoolLogo(logo: string) { this.db.prepare('UPDATE app_preferences SET school_logo = ? WHERE id = 1').run(logo); }
   getCenterConfiguration(): CenterConfiguration {
-    const row = this.db.prepare('SELECT exam_weight, continuous_assessment_weight, final_report_grade_mode, grades_json, has_assessment_weights, has_letter_grades FROM app_preferences WHERE id = 1').get() as Row;
+    const row = this.db.prepare('SELECT exam_weight, continuous_assessment_weight, final_report_grade_mode, not_evaluated_value, grades_json, grades_explanation_json, has_assessment_weights, has_letter_grades FROM app_preferences WHERE id = 1').get() as Row;
     const examWeight = Number(row.exam_weight); const continuousAssessmentWeight = Number(row.continuous_assessment_weight);
-    try { return normalizeCenterConfiguration({ examWeight, continuousAssessmentWeight, finalReportGradeMode: row.final_report_grade_mode === 'LETTER' ? 'LETTER' : 'NUMERIC', grades: JSON.parse(row.grades_json || '[]'), hasAssessmentWeights: Boolean(row.has_assessment_weights), hasLetterGrades: Boolean(row.has_letter_grades) }); }
+    try { return normalizeCenterConfiguration({ examWeight, continuousAssessmentWeight, finalReportGradeMode: row.final_report_grade_mode === 'LETTER' ? 'LETTER' : 'NUMERIC', notEvaluatedValue: row.not_evaluated_value ?? '-', grades: JSON.parse(row.grades_json || '[]'), gradesExplanation: JSON.parse(row.grades_explanation_json || '{}'), hasAssessmentWeights: Boolean(row.has_assessment_weights), hasLetterGrades: Boolean(row.has_letter_grades) }); }
     catch { return structuredClone(DEFAULT_CENTER_CONFIGURATION); }
   }
   saveCenterConfiguration(configuration: CenterConfiguration) {
-    const { examWeight, continuousAssessmentWeight, finalReportGradeMode, grades, hasAssessmentWeights, hasLetterGrades } = normalizeCenterConfiguration(configuration);
-    this.db.prepare('UPDATE app_preferences SET exam_weight = ?, continuous_assessment_weight = ?, final_report_grade_mode = ?, grades_json = ?, has_assessment_weights = ?, has_letter_grades = ? WHERE id = 1').run(examWeight, continuousAssessmentWeight, finalReportGradeMode, JSON.stringify(grades), hasAssessmentWeights ? 1 : 0, hasLetterGrades ? 1 : 0);
+    const { examWeight, continuousAssessmentWeight, finalReportGradeMode, notEvaluatedValue, grades, gradesExplanation, hasAssessmentWeights, hasLetterGrades } = normalizeCenterConfiguration(configuration);
+    this.db.prepare('UPDATE app_preferences SET exam_weight = ?, continuous_assessment_weight = ?, final_report_grade_mode = ?, not_evaluated_value = ?, grades_json = ?, grades_explanation_json = ?, has_assessment_weights = ?, has_letter_grades = ? WHERE id = 1').run(examWeight, continuousAssessmentWeight, finalReportGradeMode, notEvaluatedValue, JSON.stringify(grades), JSON.stringify(gradesExplanation ?? {}), hasAssessmentWeights ? 1 : 0, hasLetterGrades ? 1 : 0);
     return this.getCenterConfiguration();
   }
 
@@ -433,7 +435,7 @@ export class AppDatabase {
         AND (SELECT COUNT(*) FROM worksheet_values v WHERE v.worksheet_id = w.id
           AND (w.is_elective = 0 OR NOT EXISTS (SELECT 1 FROM worksheet_disabled_students d WHERE d.worksheet_id = w.id AND d.student_id = v.student_id))
           AND TRIM(v.value) <> ''
-          AND (w.grade_mode = 'LETTER' OR UPPER(TRIM(v.value)) IN ('-', 'NP') OR (
+          AND (w.grade_mode = 'LETTER' OR (
             TRIM(v.value) NOT GLOB '*[^0-9.,]*'
             AND REPLACE(TRIM(v.value), ',', '.') NOT IN ('.', '')
             AND LENGTH(REPLACE(TRIM(v.value), ',', '.')) - LENGTH(REPLACE(REPLACE(TRIM(v.value), ',', '.'), '.', '')) <= 1
@@ -447,12 +449,12 @@ export class AppDatabase {
   }
 
   private isWorksheetComplete(worksheet: WorksheetSummary) {
-    const columns = (this.db.prepare('SELECT id FROM worksheet_columns WHERE worksheet_id = ?').all(worksheet.id) as Row[]).map(row => Number(row.id));
+    const columns = (this.db.prepare('SELECT id, assessment_date FROM worksheet_columns WHERE worksheet_id = ?').all(worksheet.id) as Row[]).map(row => ({ id: Number(row.id), assessmentDate: row.assessment_date as string }));
     const students = (this.db.prepare(`SELECT id FROM students s WHERE s.course_level = ? AND (? = 0 OR NOT EXISTS (SELECT 1 FROM worksheet_disabled_students d WHERE d.worksheet_id = ? AND d.student_id = s.id))`).all(worksheet.courseLevel, worksheet.isElective ? 1 : 0, worksheet.id) as Row[]).map(row => Number(row.id));
-    if (!columns.length || !students.length) return false;
+    if (!columns.length || !students.length || (worksheet.copiedFromId && columns.some(column => !column.assessmentDate))) return false;
     const values = new Map((this.db.prepare('SELECT student_id, column_id, value FROM worksheet_values WHERE worksheet_id = ?').all(worksheet.id) as Row[]).map(row => [`${row.student_id}:${row.column_id}`, row.value as string]));
-    const grades = this.getCenterConfiguration().grades;
-    return students.every(studentId => columns.every(columnId => isCompleteGradeValue(values.get(`${studentId}:${columnId}`) ?? '', worksheet.gradeMode, grades)));
+    const configuration = this.getCenterConfiguration();
+    return students.every(studentId => columns.every(column => isCompleteGradeValue(values.get(`${studentId}:${column.id}`) ?? '', worksheet.gradeMode, configuration.grades, configuration.notEvaluatedValue)));
   }
 
   private mapWorksheet = (row: Row): WorksheetSummary => ({
@@ -465,7 +467,12 @@ export class AppDatabase {
       const row = this.db.prepare('SELECT roster_snapshot_json FROM worksheets WHERE id = ?').get(id) as Row | undefined;
       try { return new Set<string>(JSON.parse(row?.roster_snapshot_json ?? '[]')); } catch { return new Set<string>(); }
     };
-    const sourceStudents = readSnapshot(sourceWorksheetId); const currentStudents = readSnapshot(worksheetId);
+    const sourceExists = this.db.prepare('SELECT 1 FROM worksheets WHERE id = ?').get(sourceWorksheetId);
+    const fallbackSource = sourceExists ? undefined : this.db.prepare(`SELECT source.id FROM worksheets copy
+      JOIN worksheets source ON source.course_level = copy.course_level AND source.subject = copy.subject AND source.trimester < copy.trimester
+      WHERE copy.id = ? ORDER BY source.trimester DESC, source.id DESC LIMIT 1`).get(worksheetId) as Row | undefined;
+    const resolvedSourceId = sourceExists ? sourceWorksheetId : fallbackSource ? Number(fallbackSource.id) : worksheetId;
+    const sourceStudents = readSnapshot(resolvedSourceId); const currentStudents = readSnapshot(worksheetId);
     const addedStudents = [...currentStudents].filter(name => !sourceStudents.has(name));
     const removedStudents = [...sourceStudents].filter(name => !currentStudents.has(name));
     const addedAssessments = (this.db.prepare('SELECT name FROM worksheet_columns WHERE worksheet_id = ? AND source_column_id IS NULL ORDER BY sort_order, id').all(worksheetId) as Row[]).map(row => row.name as string);
@@ -489,6 +496,62 @@ export class AppDatabase {
       if (String(error).includes('UNIQUE')) throw new Error('DUPLICATE_WORKSHEET', { cause: error });
       throw error;
     }
+  }
+
+  restoreWorksheet(data: FullSeguimentExport, replace: boolean): WorksheetSummary {
+    const targetTrimester = normalizeTrimester(data.trimester.id);
+    if (!targetTrimester) throw new Error('INVALID_TRIMESTER');
+    const gradeMode = data.subject.gradeMode ?? 'NUMERIC';
+    const isElective = Boolean(data.subject.isElective);
+    const configuration = this.getCenterConfiguration();
+    if (gradeMode === 'LETTER' && !configuration.hasLetterGrades) throw new Error('LETTER_GRADES_NOT_CONFIGURED');
+    const normalized = normalizeImportedNumericGrades(data);
+    for (const student of normalized.students) for (const value of Object.values(student.values)) {
+      if (value && !isCompleteGradeValue(value, gradeMode, configuration.grades, configuration.notEvaluatedValue)) throw new Error('INVALID_GRADE_VALUE');
+    }
+    const existing = this.listWorksheets().find(worksheet => worksheet.courseLevel === normalized.course.level && worksheet.trimester === targetTrimester && worksheet.subject === normalized.subject.name);
+    if (existing && !replace) throw new Error('DUPLICATE_WORKSHEET');
+    const students = this.listStudents(normalized.course.level);
+    const studentIds = new Map<string, number[]>();
+    for (const student of students) studentIds.set(student.fullName, [...(studentIds.get(student.fullName) ?? []), student.id]);
+    const importedStudentIds = normalized.students.map(student => {
+      const id = studentIds.get(student.name)?.shift();
+      if (!id) throw new Error('STUDENT_ROSTER_MISMATCH');
+      return { student, id };
+    });
+    if (importedStudentIds.length !== students.length || [...studentIds.values()].some(ids => ids.length)) throw new Error('STUDENT_ROSTER_MISMATCH');
+    const now = this.now();
+    let worksheetId = 0;
+    this.transaction(() => {
+      if (existing) {
+        worksheetId = existing.id;
+        this.db.prepare('DELETE FROM worksheet_disabled_students WHERE worksheet_id = ?').run(worksheetId);
+        this.db.prepare('DELETE FROM worksheet_columns WHERE worksheet_id = ?').run(worksheetId);
+        this.db.prepare('UPDATE worksheets SET grade_mode = ?, is_elective = ?, updated_at = ?, copied_from_id = NULL, roster_snapshot_json = ? WHERE id = ?')
+          .run(gradeMode, isElective ? 1 : 0, now, this.rosterSnapshot(normalized.course.level), worksheetId);
+      } else {
+        const result = this.db.prepare('INSERT INTO worksheets(course_level, trimester, subject, grade_mode, is_elective, created_at, updated_at, roster_snapshot_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(normalized.course.level, targetTrimester, normalized.subject.name, gradeMode, isElective ? 1 : 0, now, now, this.rosterSnapshot(normalized.course.level));
+        worksheetId = Number(result.lastInsertRowid);
+      }
+      const insertColumn = this.db.prepare('INSERT INTO worksheet_columns(worksheet_id, export_id, name, kind, assessment_date, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
+      const columnIds = new Map<string, number>();
+      normalized.columns.forEach((column, index) => {
+        const inserted = insertColumn.run(worksheetId, column.id, column.name.trim(), column.kind ?? 'CONTINUOUS_ASSESSMENT', column.assessmentDate ?? '', index);
+        columnIds.set(column.id, Number(inserted.lastInsertRowid));
+      });
+      const disableStudent = this.db.prepare('INSERT INTO worksheet_disabled_students(worksheet_id, student_id) VALUES (?, ?)');
+      const insertValue = this.db.prepare('INSERT INTO worksheet_values(worksheet_id, student_id, column_id, value, observation) VALUES (?, ?, ?, ?, ?)');
+      for (const { student, id } of importedStudentIds) {
+        if (isElective && student.enabled === false) disableStudent.run(worksheetId, id);
+        for (const column of normalized.columns) {
+          const value = normalizeGradeValue(student.values[column.id] ?? '');
+          const observation = student.observations?.[column.id] ?? '';
+          if (value || observation) insertValue.run(worksheetId, id, columnIds.get(column.id)!, value, observation);
+        }
+      }
+    });
+    return this.listWorksheets().find(worksheet => worksheet.id === worksheetId)!;
   }
 
   copyWorksheet(worksheetId: number, trimester: Trimester): WorksheetSummary {
@@ -589,7 +652,9 @@ export class AppDatabase {
     if (!worksheet) throw new Error('No se ha encontrado la hoja.');
     const current = this.db.prepare('SELECT value, observation FROM worksheet_values WHERE worksheet_id = ? AND student_id = ? AND column_id = ?')
       .get(worksheetId, studentId, columnId) as Row | undefined;
+    const configuration = this.getCenterConfiguration();
     const grade = field === 'grade' ? normalizeGradeValue(value) : current?.value ?? '';
+    if (field === 'grade' && grade && !isCompleteGradeValue(grade, worksheet.grade_mode === 'LETTER' ? 'LETTER' : 'NUMERIC', configuration.grades, configuration.notEvaluatedValue)) throw new Error('INVALID_GRADE_VALUE');
     const observation = field === 'observation' ? value : current?.observation ?? '';
     if (!grade && !observation) {
       this.db.prepare('DELETE FROM worksheet_values WHERE worksheet_id = ? AND student_id = ? AND column_id = ?').run(worksheetId, studentId, columnId);
@@ -646,10 +711,10 @@ export class AppDatabase {
     const payload = row.payload_json ? JSON.parse(row.payload_json) as FullSeguimentExport : null;
     const enabledStudents = payload?.students.filter(student => student.enabled !== false) ?? [];
     const gradeMode = payload?.subject.gradeMode ?? 'NUMERIC';
-    const grades = this.getCenterConfiguration().grades;
+    const configuration = this.getCenterConfiguration();
     const gradedStudentNames = payload && payload.columns.length > 0
       ? enabledStudents
-        .filter(student => payload.columns.every(column => isCompleteImportedGrade(student.values[column.id] ?? '', gradeMode, grades)))
+        .filter(student => payload.columns.every(column => isCompleteImportedGrade(student.values[column.id] ?? '', gradeMode, configuration.grades, configuration.notEvaluatedValue)))
         .map(student => student.name)
       : [];
     return {
