@@ -21,9 +21,7 @@ export function buildTrackingReports(db: AppDatabase, reportId: number): Trackin
   const { courseLevel, trimester } = report;
   if (!isCourseLevel(courseLevel) || !isTrimester(trimester) || !db.hasCourse(courseLevel)) throw new Error('INVALID_REPORT_SELECTION');
 
-  const imported = db.listImports(reportId)
-    .filter(item => item.isBlocking)
-    .map(item => db.getImportedWorksheet(item.id));
+  const imported = db.listImports(reportId).map(item => db.getImportedWorksheet(item.id));
   const sourceReport = report.sequence > 1
     ? db.listTrackingReports().find(item => item.courseLevel === courseLevel && item.trimester === trimester && item.sequence === report.sequence - 1)
     : undefined;
@@ -63,14 +61,16 @@ export function buildTrackingReports(db: AppDatabase, reportId: number): Trackin
         teacher: subject.delivery.payload.teacher,
         gradeMode: subject.delivery.payload.subject.gradeMode,
         exportedAt: subject.delivery.payload.exportedAt,
-        columns: sourceReport ? markExistingColumns(subject.delivery.payload.columns, sourceColumnsBySubject.get(subject.name) ?? []) : subject.delivery.payload.columns
+        columns: sourceReport ? markExistingColumns(subject.delivery.payload.columns, sourceColumnsBySubject.get(subject.name) ?? []) : subject.delivery.payload.columns,
+        isExcluded: !subject.delivery.isBlocking
       };
     }),
     students: students.map(student => ({
       name: student.fullName,
       tutorObservation: tutorObservations[`${reportId}:${student.id}`] ?? '',
-      subjects: subjects.map(subject => {
+      subjects: subjects.flatMap(subject => {
         const importedStudent = subject.delivery.payload.students.find(item => item.name === student.fullName);
+        if (subject.delivery.payload.subject.isElective && importedStudent?.enabled === false) return [];
         return {
           name: subject.name,
           values: importedStudent?.values ?? {},
