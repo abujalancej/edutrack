@@ -468,6 +468,28 @@ export class AppDatabase {
     }
   }
 
+  copyWorksheet(worksheetId: number, trimester: Trimester): WorksheetSummary {
+    const source = this.db.prepare('SELECT course_level, trimester, subject, grade_mode, is_elective FROM worksheets WHERE id = ?').get(worksheetId) as Row | undefined;
+    if (!source) throw new Error('No se ha encontrado la hoja.');
+    if (!normalizeTrimester(trimester)) throw new Error('El trimestre no es válido.');
+    if (source.trimester === trimester) throw new Error('DUPLICATE_WORKSHEET');
+    if (this.db.prepare('SELECT 1 FROM worksheets WHERE course_level = ? AND trimester = ? AND subject = ?').get(source.course_level, trimester, source.subject)) throw new Error('DUPLICATE_WORKSHEET');
+    const now = this.now();
+    let newId = 0;
+    this.transaction(() => {
+      const result = this.db.prepare('INSERT INTO worksheets(course_level, trimester, subject, grade_mode, is_elective, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run(source.course_level, trimester, source.subject, source.grade_mode, source.is_elective, now, now);
+      newId = Number(result.lastInsertRowid);
+      const columns = this.db.prepare('SELECT name, kind, sort_order FROM worksheet_columns WHERE worksheet_id = ? ORDER BY sort_order, id').all(worksheetId) as Row[];
+      const insertColumn = this.db.prepare('INSERT INTO worksheet_columns(worksheet_id, export_id, name, kind, assessment_date, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
+      columns.forEach(column => insertColumn.run(newId, `col_${randomUUID()}`, column.name, column.kind, '', column.sort_order));
+      if (source.is_elective) {
+        this.db.prepare('INSERT INTO worksheet_disabled_students(worksheet_id, student_id) SELECT ?, student_id FROM worksheet_disabled_students WHERE worksheet_id = ?').run(newId, worksheetId);
+      }
+    });
+    return this.listWorksheets().find(sheet => sheet.id === newId)!;
+  }
+
   deleteWorksheet(id: number) { this.db.prepare('DELETE FROM worksheets WHERE id = ?').run(id); }
 
   getWorksheet(id: number): WorksheetDetail {

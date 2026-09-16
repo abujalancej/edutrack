@@ -44,6 +44,26 @@ describe('AppDatabase', () => {
     expect(() => db.createWorksheet(input)).toThrow('DUPLICATE_WORKSHEET');
   });
 
+  it('copia la estructura de una hoja en otro trimestre sin fechas ni datos', () => {
+    const student = db.addStudent('ESO_1', 'Anna Pérez');
+    const source = db.createWorksheet({ courseLevel: 'ESO_1', trimester: 'T_1', subject: 'Música' });
+    const exam = db.addAssessment(source.id, 'EXAM', 'Examen 1', '2026-09-12').columns[0];
+    const activity = db.addAssessment(source.id, 'CONTINUOUS_ASSESSMENT', 'Comentari', '2026-09-13').columns[1];
+    db.saveCell(source.id, student.id, exam.id, 'grade', '8');
+    db.saveCell(source.id, student.id, activity.id, 'observation', 'Correcte');
+
+    const copy = db.copyWorksheet(source.id, 'T_2');
+    const detail = db.getWorksheet(copy.id);
+    expect(detail).toMatchObject({ trimester: 'T_2', subject: 'Música', gradeMode: 'NUMERIC', isElective: false });
+    expect(detail.columns).toMatchObject([
+      { name: 'Examen 1', kind: 'EXAM', assessmentDate: '' },
+      { name: 'Comentari', kind: 'CONTINUOUS_ASSESSMENT', assessmentDate: '' }
+    ]);
+    expect(detail.values).toEqual({});
+    expect(detail.observations).toEqual({});
+    expect(() => db.copyWorksheet(source.id, 'T_2')).toThrow('DUPLICATE_WORKSHEET');
+  });
+
   it('genera una exportación sin ids SQLite', () => {
     db.saveProfile({ firstName: 'Marta', lastName: 'Serra' });
     const pau = db.addStudent('ESO_1', 'Pau Soler');

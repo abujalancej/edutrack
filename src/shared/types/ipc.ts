@@ -22,6 +22,7 @@ export interface FullSeguimentApi {
   analyzeRosterFile(path: string): Promise<RosterFileAnalysis>;
   replaceCourseRoster(course: CourseLevel, names: string[]): Promise<Student[]>;
   createWorksheet(input: { courseLevel: CourseLevel; trimester: Trimester; subject: string; gradeMode: GradeMode; isElective: boolean }): Promise<WorksheetSummary>;
+  copyWorksheet(worksheetId: number, trimester: Trimester): Promise<WorksheetSummary>;
   configureElectiveStudents(worksheetId: number, enabledStudentIds: number[]): Promise<WorksheetDetail>;
   deleteWorksheet(id: number): Promise<void>;
   getWorksheet(id: number): Promise<WorksheetDetail>;

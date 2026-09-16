@@ -89,6 +89,11 @@ export function registerIpc(db: AppDatabase) {
     if (!isCourseLevel(input.courseLevel) || !trimester || !['NUMERIC', 'LETTER'].includes(input.gradeMode) || typeof input.isElective !== 'boolean' || !db.hasCourse(input.courseLevel) || !db.hasSubject(input.courseLevel, input.subject)) throw new Error('INVALID_WORKSHEET_SELECTION');
     return db.createWorksheet({ ...input, trimester });
   });
+  ipcMain.handle('worksheet:copy', (_e, worksheetId, targetTrimester) => {
+    const trimester = normalizeTrimester(targetTrimester);
+    if (!Number.isInteger(worksheetId) || worksheetId <= 0 || !trimester) throw new Error('INVALID_WORKSHEET_COPY');
+    return db.copyWorksheet(worksheetId, trimester);
+  });
   ipcMain.handle('worksheet:elective-students', (_e, worksheetId, enabledStudentIds) => {
     if (!Number.isInteger(worksheetId) || worksheetId <= 0 || !Array.isArray(enabledStudentIds)) throw new Error('Selección de alumnado no válida.');
     return db.configureElectiveStudents(worksheetId, enabledStudentIds);

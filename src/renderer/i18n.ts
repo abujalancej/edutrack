@@ -10,7 +10,11 @@ export const setActiveLanguage = (language: AppLanguage) => { activeLanguage = l
 export const setActiveTeacherSex = (sex?: TeacherSex) => { activeTeacherSex = sex === 'FEMALE' ? 'FEMALE' : 'MALE'; };
 export const getActiveLanguage = () => activeLanguage;
 
+const copySheetTranslations = {
+  copySheet:'Crear copia', copySheetTitle:'Crear copia de asignatura', copySheetHelp:'Selecciona el trimestre de destino para crear una nueva hoja con la misma estructura de evaluaciones.', targetTrimester:'Trimestre de destino', selectTrimester:'Selecciona un trimestre', copySheetWarning:'Se copiarán los exámenes y las evaluaciones continuas con sus nombres. Las fechas se borrarán y las notas y observaciones no se copiarán.', copySheetTrimesterRequired:'Debes seleccionar un trimestre de destino.', copySheetNoTrimesters:'No hay otro trimestre disponible para esta asignatura.', copySheetError:'No se ha podido crear la copia.', copySheetCreated:'Copia creada correctamente.'
+} as const;
 const es = {
+  ...copySheetTranslations,
   numericOnlyConfiguration:'Solo notas numéricas', letterGradesConfigured:'Notas con letras configuradas',
   deleteConfirmationPrompt:'Escribe “{subject}” para confirmar.',
   deleteConfirmationPlaceholder:'Nombre de la asignatura',

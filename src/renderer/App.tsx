@@ -64,7 +64,7 @@ export default function App() {
       {view.page === 'tutor-report' && mode === 'tutor' && <TutorReportPage state={state} reportId={view.reportId} navigate={setView} refresh={refresh} notify={notify} />}
       {view.page === 'settings' && <Settings state={state} refresh={refresh} notify={notify} onProfileChange={updateProfile} />}
       {view.page === 'help' && <HelpPage />}
-      {view.page === 'sheet' && <WorksheetPage id={view.id} navigate={setView} refresh={refresh} notify={notify} courses={state.courses} profile={state.profile} centerConfiguration={state.centerConfiguration} />}
+      {view.page === 'sheet' && <WorksheetPage id={view.id} navigate={setView} refresh={refresh} notify={notify} courses={state.courses} worksheets={state.worksheets} profile={state.profile} centerConfiguration={state.centerConfiguration} />}
       {view.page === 'imported' && <ImportedPage id={view.id} navigate={setView} state={state} />}
     </main>
     {notice && <div className={`toast ${notice.type}`}><Icon name={notice.type === 'success' ? 'check' : 'x'} />{notice.text}</div>}
@@ -152,9 +152,9 @@ function NewWorksheetModal({ state, close, refresh, navigate }: { state: Initial
   </Modal>;
 }
 
-function WorksheetPage({ id, navigate, refresh, notify, courses, profile, centerConfiguration }: { id: number; navigate: (v: View) => void; refresh: () => Promise<void>; notify: (n: Notice) => void; courses: InitialState['courses']; profile: InitialState['profile']; centerConfiguration: InitialState['centerConfiguration'] }) {
+function WorksheetPage({ id, navigate, refresh, notify, courses, worksheets, profile, centerConfiguration }: { id: number; navigate: (v: View) => void; refresh: () => Promise<void>; notify: (n: Notice) => void; courses: InitialState['courses']; worksheets: InitialState['worksheets']; profile: InitialState['profile']; centerConfiguration: InitialState['centerConfiguration'] }) {
   const [sheet, setSheet] = useState<WorksheetDetail | null>(null); const [adding, setAdding] = useState(false); const [editing, setEditing] = useState<WorksheetDetail['columns'][number] | null>(null);
-  const [assessmentToDelete, setAssessmentToDelete] = useState<WorksheetDetail['columns'][number] | null>(null); const [confirmingSelectionClear, setConfirmingSelectionClear] = useState(false);
+  const [assessmentToDelete, setAssessmentToDelete] = useState<WorksheetDetail['columns'][number] | null>(null); const [confirmingSelectionClear, setConfirmingSelectionClear] = useState(false); const [copying, setCopying] = useState(false);
   const [activeAssessmentId, setActiveAssessmentId] = useState<number | null>(null);
   const [managingElectiveStudents, setManagingElectiveStudents] = useState(false);
   const [selection, setSelection] = useState<GridSelection | null>(null);
@@ -171,6 +171,7 @@ function WorksheetPage({ id, navigate, refresh, notify, courses, profile, center
     setAdding(false); setEditing(null); await load(); await refresh();
   };
   const removeColumn = async (columnId: number) => { await window.fullSeguiment.deleteColumn(columnId); if (activeAssessmentId === columnId) setActiveAssessmentId(null); setSelection(null); await load(); await refresh(); };
+  const copyWorksheet = async (trimester: Trimester) => { const copy = await window.fullSeguiment.copyWorksheet(id, trimester); await refresh(); setCopying(false); notify({ type: 'success', text: tr('copySheetCreated') }); navigate({ page: 'sheet', id: copy.id }); };
   const exportSheet = async () => { const result = await window.fullSeguiment.exportWorksheet(id); if (result.ok) notify({ type: 'success', text: tr('exported') }); else if (result.code === 'PROFILE_REQUIRED') { notify({ type: 'error', text: tr('profileNeeded') }); navigate({ page: 'settings' }); } else if (result.code === 'STUDENTS_REQUIRED') notify({ type: 'error', text: tr('studentsNeeded') }); else if (result.code === 'INCOMPLETE_WORKSHEET') notify({ type: 'error', text: tr('worksheetIncomplete') }); };
   const activeAssessment = sheet.columns.find(column => column.id === activeAssessmentId) ?? sheet.columns[0] ?? null;
   const disabledStudentIds = new Set(sheet.disabledStudentIds ?? []);
@@ -254,7 +255,7 @@ function WorksheetPage({ id, navigate, refresh, notify, courses, profile, center
   const selectCell = (row: number, column: number, extend = false) => setSelection(current => extend && current ? { ...current, end: { row, column } } : { start: { row, column }, end: { row, column } });
   const selectAssessment = (assessmentId: number | null) => { setActiveAssessmentId(assessmentId); setSelection(null); };
   return <>
-    <div className="sheet-toolbar compact-sheet-toolbar"><button className="back-button" onClick={() => navigate({ page: 'dashboard' })}><Icon name="back" /> {tr('back')}</button><div className="compact-sheet-title"><span>{courses.find(course => course.id === sheet.courseLevel)?.name ?? sheet.courseLevel} · {trimesterUi(sheet.trimester)}</span><strong>{subjectUi(sheet.subject)}{sheet.isElective && <small className="elective-title-tag">{tr('elective')}</small>}</strong></div><div className="toolbar-actions">{sheet.isElective && <button className="secondary elective-students-button" title={tr('manageElectiveStudents')} onClick={() => setManagingElectiveStudents(true)}><Icon name="users" /> {activeStudents.length}/{sheet.students.length}</button>}<button className="primary" disabled={!exportReady} title={exportReady ? tr('export') : tr('exportRequirements')} onClick={() => void exportSheet()}><Icon name="download" /> {tr('export')}</button></div></div>
+    <div className="sheet-toolbar compact-sheet-toolbar"><button className="back-button" onClick={() => navigate({ page: 'dashboard' })}><Icon name="back" /> {tr('back')}</button><div className="compact-sheet-title"><span>{courses.find(course => course.id === sheet.courseLevel)?.name ?? sheet.courseLevel} · {trimesterUi(sheet.trimester)}</span><strong>{subjectUi(sheet.subject)}{sheet.isElective && <small className="elective-title-tag">{tr('elective')}</small>}</strong></div><div className="toolbar-actions">{sheet.isElective && <button className="secondary elective-students-button" title={tr('manageElectiveStudents')} onClick={() => setManagingElectiveStudents(true)}><Icon name="users" /> {activeStudents.length}/{sheet.students.length}</button>}<button className="secondary" title={tr('copySheet')} onClick={() => setCopying(true)}><Icon name="copy" /> {tr('copySheet')}</button><button className="primary" disabled={!exportReady} title={exportReady ? tr('export') : tr('exportRequirements')} onClick={() => void exportSheet()}><Icon name="download" /> {tr('export')}</button></div></div>
     {sheet.students.length === 0 ? <Empty icon="users" title={tr('noCourseStudents')} text={tr('noCourseStudentsHelp')} action={<button className="primary" onClick={() => navigate({ page: 'settings' })}>{tr('goSettings')}</button>} /> :
       <div className="assessment-workspace">
         <section className="assessment-detail">
@@ -274,6 +275,7 @@ function WorksheetPage({ id, navigate, refresh, notify, courses, profile, center
     {editing && <AssessmentModal initial={editing} close={() => setEditing(null)} onSave={input => saveAssessment(input, editing.id)} />}
     {assessmentToDelete && <ConfirmDeleteModal title={tr('deleteAssessmentTitle')} message={tr('deleteColumn', { name: assessmentToDelete.name })} close={() => setAssessmentToDelete(null)} confirm={() => removeColumn(assessmentToDelete.id)} />}
     {confirmingSelectionClear && <ConfirmDeleteModal title={tr('clearSelectionTitle')} message={tr('clearSelectionConfirm')} close={() => setConfirmingSelectionClear(false)} confirm={clearSelection} />}
+    {copying && <CopyWorksheetModal subject={sheet.subject} sourceTrimester={sheet.trimester} existingTrimesters={worksheets.filter(item => item.courseLevel === sheet.courseLevel && item.subject === sheet.subject).map(item => item.trimester)} close={() => setCopying(false)} onSave={copyWorksheet} />}
   </>;
 }
 
@@ -290,6 +292,22 @@ function CellEditor({ worksheetId, studentId, columnId, initialValue, label, fie
   const gradeClass = gradeMissing ? 'grade-missing' : normalizedGrade === '-' ? 'grade-special' : validGrade && numericGrade >= 5 ? 'grade-pass' : 'grade-fail';
   if (field === 'grade' && gradeMode === 'LETTER') return <><input {...common} className={`grade-letter ${gradeMissing || !validGrade ? 'grade-missing' : ''}`} type="text" list={`letter-grade-options-${worksheetId}`} maxLength={12} spellCheck={false} autoCapitalize="characters" aria-invalid={!validGrade} /><datalist id={`letter-grade-options-${worksheetId}`}>{grades.map(item => <option key={item.grade} value={item.grade} />)}</datalist></>;
   return field === 'grade' ? <input {...common} className={gradeClass} type="text" maxLength={12} inputMode="decimal" spellCheck={false} autoCapitalize="characters" aria-invalid={!validGrade} /> : <textarea {...common} rows={1} placeholder={tr('observationPlaceholder')} />;
+}
+
+function CopyWorksheetModal({ subject, sourceTrimester, existingTrimesters, close, onSave }: { subject: string; sourceTrimester: Trimester; existingTrimesters: Trimester[]; close: () => void; onSave: (trimester: Trimester) => Promise<void> }) {
+  const [trimester, setTrimester] = useState<Trimester | ''>(''); const [error, setError] = useState('');
+  const available = TRIMESTERS.filter(item => item !== sourceTrimester && !existingTrimesters.includes(item));
+  const save = async () => {
+    if (!trimester) { setError(tr('copySheetTrimesterRequired')); return; }
+    try { await onSave(trimester); } catch (caught) { setError(caught instanceof Error && caught.message.includes('DUPLICATE_WORKSHEET') ? tr('duplicateSheet', { sheet: `${subject} · ${trimesterUi(trimester)}` }) : tr('copySheetError')); }
+  };
+  return <Modal title={tr('copySheetTitle')} subtitle={tr('copySheetHelp')} close={close}>
+    <label>{tr('targetTrimester')}<select value={trimester} onChange={event => { setTrimester(event.target.value as Trimester); setError(''); }}><option value="">{tr('selectTrimester')}</option>{available.map(item => <option key={item} value={item}>{trimesterUi(item)}</option>)}</select></label>
+    <div className="copy-warning">{tr('copySheetWarning')}</div>
+    {!available.length && <div className="inline-error">{tr('copySheetNoTrimesters')}</div>}
+    {error && <div className="inline-error"><Icon name="x" />{error}</div>}
+    <div className="modal-actions"><button className="secondary" onClick={close}>{tr('cancel')}</button><button className="primary" disabled={!trimester || !available.length} onClick={() => void save()}>{tr('copySheet')}</button></div>
+  </Modal>;
 }
 
 function AssessmentModal({ initial, close, onSave }: { initial?: WorksheetDetail['columns'][number]; close: () => void; onSave: (input: { kind: AssessmentKind; name: string; assessmentDate: string }) => Promise<void> }) {

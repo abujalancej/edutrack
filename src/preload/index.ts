@@ -19,6 +19,7 @@ const api: FullSeguimentApi = {
   analyzeRosterFile: path => ipcRenderer.invoke('roster:analyze', path),
   replaceCourseRoster: (course, names) => ipcRenderer.invoke('roster:replace', course, names),
   createWorksheet: input => ipcRenderer.invoke('worksheet:create', input),
+  copyWorksheet: (worksheetId, trimester) => ipcRenderer.invoke('worksheet:copy', worksheetId, trimester),
   configureElectiveStudents: (worksheetId, enabledStudentIds) => ipcRenderer.invoke('worksheet:elective-students', worksheetId, enabledStudentIds),
   deleteWorksheet: id => ipcRenderer.invoke('worksheet:delete', id),
   getWorksheet: id => ipcRenderer.invoke('worksheet:get', id),
