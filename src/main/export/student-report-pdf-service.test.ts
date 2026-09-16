@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { TrackingReportsExport } from '../../shared/types/models';
-import { buildStudentReportHtml, studentReportFilename } from './student-report-pdf-service';
+import { DEFAULT_CENTER_CONFIGURATION } from '../../shared/center/center-configuration';
+import { buildCombinedStudentReportHtml, buildStudentReportHtml, combinedStudentReportFilename, studentReportFilename } from './student-report-pdf-service';
 
 const report: TrackingReportsExport = {
   format: 'edutrack-tracking-reports', version: 1, generatedAt: '2026-09-14T10:00:00.000Z', language: 'ca',
+  centerConfiguration: DEFAULT_CENTER_CONFIGURATION,
   course: { level: 'ESO_1', name: '1r ESO' }, trimester: { id: 'T_1', name: '1r Trimestre' }, report: { sequence: 2 },
   subjects: [
     {
@@ -32,10 +34,13 @@ describe('student report PDF content', () => {
     expect(html).toContain('Ha millorat molt.');
     expect(html).not.toContain('Pau Martí');
     expect(html).not.toContain('Dades d’un altre alumne.');
+    expect(html).toContain('70% d’exàmens');
+    expect(html).toContain('30% d’avaluació contínua');
   });
 
   it('usa identificadores compactos y un nombre de alumno seguro en cada PDF', () => {
     expect(studentReportFilename(report, 'Anna García')).toBe('ESO1_T1_full-2_anna-garcia_CAT.pdf');
+    expect(combinedStudentReportFilename(report)).toBe('ESO1_T1_full-2_todos_CAT.pdf');
   });
 
   it.each([
@@ -74,5 +79,19 @@ describe('student report PDF content', () => {
     const html = buildStudentReportHtml(special, 0);
     expect(html).toContain('>NP</td>');
     expect(html).toContain('>-</td>');
+  });
+
+  it.each(['es', 'ca', 'en', 'eu', 'gl'] as const)('muestra la ponderación antes de las tablas en %s', language => {
+    const html = buildStudentReportHtml({ ...report, language, centerConfiguration: { ...DEFAULT_CENTER_CONFIGURATION, examWeight: 65, continuousAssessmentWeight: 35 } }, 0);
+    expect(html).toContain('65%');
+    expect(html).toContain('35%');
+    expect(html.indexOf('assessment-weight-notice')).toBeLessThan(html.indexOf('<table>'));
+  });
+
+  it('combina todos los informes del alumnado en un documento paginado', () => {
+    const html = buildCombinedStudentReportHtml(report);
+    expect(html).toContain('Anna García');
+    expect(html).toContain('Pau Martí');
+    expect(html).toContain('.combined-student-report{break-after:page}');
   });
 });

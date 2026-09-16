@@ -1,6 +1,6 @@
 import type { CourseLevel, Trimester } from '../catalogs/catalogs';
 import type { AssessmentKind, GradeMode } from './models';
-import type { AppLanguage, ConfiguredCourse, ConfiguredSubject, FullSeguimentExport, ImportedWorksheetDetail, ImportedWorksheetSummary, ImportAnalysis, InitialState, RosterFileAnalysis, Student, TeacherProfile, TrackingReportSummary, WorksheetDetail, WorksheetSummary } from './models';
+import type { AppLanguage, CenterConfiguration, ConfiguredCourse, ConfiguredSubject, FullSeguimentExport, ImportedWorksheetDetail, ImportedWorksheetSummary, ImportAnalysis, InitialState, RosterFileAnalysis, Student, TeacherProfile, TrackingReportSummary, WorksheetDetail, WorksheetSummary } from './models';
 
 export interface OperationResult { ok: boolean; code?: string; error?: string; replaced?: boolean; count?: number }
 
@@ -8,7 +8,7 @@ export interface FullSeguimentApi {
   getInitialState(): Promise<InitialState>;
   saveLanguage(language: AppLanguage): Promise<AppLanguage>;
   saveProfile(profile: TeacherProfile): Promise<TeacherProfile>;
-  importCenterData(): Promise<{ ok: boolean; courses?: ConfiguredCourse[]; subjects?: ConfiguredSubject[]; students?: Student[]; error?: string; cancelled?: boolean }>;
+  importCenterData(): Promise<{ ok: boolean; courses?: ConfiguredCourse[]; subjects?: ConfiguredSubject[]; students?: Student[]; centerConfiguration?: CenterConfiguration; error?: string; cancelled?: boolean }>;
   clearCenterData(): Promise<void>;
   importCourses(): Promise<{ ok: boolean; courses?: ConfiguredCourse[]; error?: string; cancelled?: boolean }>;
   importSubjects(): Promise<{ ok: boolean; subjects?: ConfiguredSubject[]; error?: string; cancelled?: boolean }>;

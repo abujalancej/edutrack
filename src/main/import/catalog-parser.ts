@@ -1,17 +1,20 @@
 export type CourseCatalogParseResult = { ok: true; names: string[] } | { ok: false; error: string };
 export type SubjectCatalogParseResult = { ok: true; entries: Array<{ course: string; subject: string }> } | { ok: false; error: string };
 export interface CenterCourseData { name: string; subjects: string[]; students: string[] }
-export type CenterDataParseResult = { ok: true; courses: CenterCourseData[] } | { ok: false; error: string };
+import { DEFAULT_CENTER_CONFIGURATION, normalizeCenterConfiguration } from '../../shared/center/center-configuration';
+import type { CenterConfiguration } from '../../shared/types/models';
+
+export type CenterDataParseResult = { ok: true; courses: CenterCourseData[]; centerConfiguration: CenterConfiguration } | { ok: false; error: string };
 
 export function parseCenterFile(content: string, extension: string): CenterDataParseResult {
   try {
-    const courses = extension.toLowerCase() === '.json' ? parseCenterJson(content) : parseCenterCsv(content);
+    const { courses, centerConfiguration } = extension.toLowerCase() === '.json' ? parseCenterJson(content) : { courses: parseCenterCsv(content), centerConfiguration: DEFAULT_CENTER_CONFIGURATION };
     if (!courses.length) return { ok: false, error: 'El archivo no contiene cursos.' };
     for (const course of courses) {
       if (!course.subjects.length) return { ok: false, error: `El curso “${course.name}” no contiene asignaturas.` };
       if (!course.students.length) return { ok: false, error: `El curso “${course.name}” no contiene alumnos.` };
     }
-    return { ok: true, courses };
+    return { ok: true, courses, centerConfiguration };
   } catch (error) { return { ok: false, error: message(error) }; }
 }
 
@@ -79,15 +82,27 @@ function parseSubjectCsv(content: string): Array<{ course: string; subject: stri
   return rows.slice(1).map(row => ({ course: row[courseIndex] ?? '', subject: row[subjectIndex] ?? '' }));
 }
 
-function parseCenterJson(content: string): CenterCourseData[] {
-  const value = json(content); const list = object(value) && Array.isArray(value.courses) ? value.courses : Array.isArray(value) ? value : null;
+function parseCenterJson(content: string): { courses: CenterCourseData[]; centerConfiguration: CenterConfiguration } {
+  const value = json(content); const root = object(value) ? value : null; const list = root && Array.isArray(root.courses) ? root.courses : Array.isArray(value) ? value : null;
   if (!list) throw new Error('El JSON debe tener una propiedad “courses” con un array.');
-  return list.map((entry, index) => {
+  const courses = list.map((entry, index) => {
     if (!object(entry)) throw new Error(`El curso de la posición ${index + 1} no es válido.`);
     const name = entry.name ?? entry.nombre ?? entry.nom; const subjects = entry.subjects ?? entry.asignaturas ?? entry.assignatures; const students = entry.students ?? entry.alumnos ?? entry.alumnes;
     if (typeof name !== 'string' || !Array.isArray(subjects) || !Array.isArray(students)) throw new Error(`El curso de la posición ${index + 1} debe incluir nombre, asignaturas y alumnos.`);
     return { name: name.trim(), subjects: unique(subjects.map(textEntry)), students: unique(students.map(textEntry)) };
   });
+  return { courses, centerConfiguration: parseCenterConfiguration(root) };
+}
+
+function parseCenterConfiguration(root: Record<string, unknown> | null): CenterConfiguration {
+  if (!root) return { ...DEFAULT_CENTER_CONFIGURATION };
+  const weights = object(root.assessmentWeights) ? root.assessmentWeights : {};
+  const examWeight = weights.exam ?? root.examWeight ?? DEFAULT_CENTER_CONFIGURATION.examWeight;
+  const continuousAssessmentWeight = weights.continuousAssessment ?? root.continuousAssessmentWeight ?? DEFAULT_CENTER_CONFIGURATION.continuousAssessmentWeight;
+  const finalReportGradeMode = root.finalReportGradeMode ?? DEFAULT_CENTER_CONFIGURATION.finalReportGradeMode;
+  const grades = root.grades ?? DEFAULT_CENTER_CONFIGURATION.grades;
+  if (typeof examWeight !== 'number' || typeof continuousAssessmentWeight !== 'number' || !Array.isArray(grades)) throw new Error('La configuración del centro no es válida.');
+  return normalizeCenterConfiguration({ examWeight, continuousAssessmentWeight, finalReportGradeMode: finalReportGradeMode as CenterConfiguration['finalReportGradeMode'], grades: grades as CenterConfiguration['grades'] });
 }
 
 function parseCenterCsv(content: string): CenterCourseData[] {

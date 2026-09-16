@@ -10,7 +10,7 @@ export function buildExport(db: AppDatabase, worksheetId: number): FullSeguiment
   if (!teacher.firstName || !teacher.lastName || !teacher.sex) throw new Error('PROFILE_REQUIRED');
   const enabledStudents = worksheet.students.filter(student => !worksheet.disabledStudentIds.includes(student.id));
   if (enabledStudents.length === 0) throw new Error('STUDENTS_REQUIRED');
-  if (worksheet.columns.length === 0 || enabledStudents.some(student => worksheet.columns.some(column => !isCompleteGradeValue(worksheet.values[`${student.id}:${column.id}`] ?? '', worksheet.gradeMode)))) throw new Error('INCOMPLETE_WORKSHEET');
+  if (worksheet.columns.length === 0 || enabledStudents.some(student => worksheet.columns.some(column => !isCompleteGradeValue(worksheet.values[`${student.id}:${column.id}`] ?? '', worksheet.gradeMode, db.getCenterConfiguration().grades)))) throw new Error('INCOMPLETE_WORKSHEET');
   return {
     format: 'full-seguiment', version: 1, exportedAt: new Date().toISOString(), teacher,
     course: { level: worksheet.courseLevel, name: db.courseName(worksheet.courseLevel) },

@@ -5,6 +5,13 @@ export type AppLanguage = 'es' | 'ca' | 'en' | 'eu' | 'gl';
 export type AssessmentKind = 'EXAM' | 'CONTINUOUS_ASSESSMENT';
 export type GradeMode = 'NUMERIC' | 'LETTER';
 export type TeacherSex = 'MALE' | 'FEMALE';
+export interface GradeConversion { grade: string; from: number }
+export interface CenterConfiguration {
+  examWeight: number;
+  continuousAssessmentWeight: number;
+  finalReportGradeMode: GradeMode;
+  grades: GradeConversion[];
+}
 export interface TeacherProfile { firstName: string; lastName: string; sex?: TeacherSex }
 export interface ConfiguredCourse { id: CourseLevel; name: string; sortOrder: number }
 export interface ConfiguredSubject { courseId: CourseLevel; name: string; sortOrder: number }
@@ -41,6 +48,7 @@ export interface ImportedWorksheetDetail extends ImportedWorksheetSummary { payl
 export interface TrackingReportsExport {
   format: 'edutrack-tracking-reports'; version: 1; generatedAt: string;
   language: AppLanguage; schoolLogo?: string; tutorSex?: TeacherSex;
+  centerConfiguration: CenterConfiguration;
   course: { level: CourseLevel; name: string };
   trimester: { id: Trimester; name: string };
   report: { sequence: number };
@@ -53,7 +61,7 @@ export interface TrackingReportsExport {
   }>;
 }
 export interface InitialState {
-  profile: TeacherProfile; language: AppLanguage; schoolLogo: string; courses: ConfiguredCourse[]; subjects: ConfiguredSubject[];
+  profile: TeacherProfile; language: AppLanguage; schoolLogo: string; centerConfiguration: CenterConfiguration; courses: ConfiguredCourse[]; subjects: ConfiguredSubject[];
   students: Student[]; worksheets: WorksheetSummary[]; trackingReports: TrackingReportSummary[]; imports: ImportedWorksheetSummary[]; tutorObservations: Record<string, string>;
 }
 export type ImportAnalysis =

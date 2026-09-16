@@ -25,7 +25,7 @@ export function registerIpc(db: AppDatabase) {
     try {
       const path = result.filePaths[0]; const parsed = parseCenterFile(await readFile(path, 'utf8'), extname(path));
       if (!parsed.ok) return parsed;
-      return { ok: true, ...db.replaceCenterData(parsed.courses) };
+      return { ok: true, ...db.replaceCenterData(parsed.courses, parsed.centerConfiguration) };
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'No se han podido cargar los datos del centro.' }; }
   });
   ipcMain.handle('configuration:center-clear', () => db.clearCenterData());

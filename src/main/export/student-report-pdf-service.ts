@@ -17,6 +17,14 @@ const LABELS: Record<AppLanguage, Labels> = {
   gl: { title: 'Folla de seguimento', student: 'Alumno', course: 'Curso', trimester: 'Trimestre', report: 'Folla', subject: 'Materia', teacher: 'Profesor', assessment: 'Avaliación', type: 'Tipo', date: 'Data', grade: 'Nota', observation: 'Observación', exam: 'Exame', continuous: 'Avaliación continua', tutorObservation: 'Observacións do titor', noObservation: 'Sen observacións', issued: 'Data de emisión', familySignature: 'Sinatura da familia' }
 };
 
+const ASSESSMENT_WEIGHT_NOTICE: Record<AppLanguage, string> = {
+  es: 'La calificación se pondera con un {exam}% de exámenes y un {continuous}% de evaluación continua.',
+  ca: 'La qualificació es pondera amb un {exam}% d’exàmens i un {continuous}% d’avaluació contínua.',
+  en: 'Grades are weighted as {exam}% exams and {continuous}% continuous assessment.',
+  eu: 'Kalifikazioa azterketen {exam}%arekin eta etengabeko ebaluazioaren {continuous}%arekin haztatzen da.',
+  gl: 'A cualificación pondera un {exam}% de exames e un {continuous}% de avaliación continua.'
+};
+
 const TRIMESTERS: Record<AppLanguage, Record<string, string>> = {
   es: { T_1: 'Primer trimestre', T_2: 'Segundo trimestre', T_3: 'Tercer trimestre' },
   ca: { T_1: 'Primer trimestre', T_2: 'Segon trimestre', T_3: 'Tercer trimestre' },
@@ -73,6 +81,7 @@ export function buildStudentReportHtml(report: TrackingReportsExport, studentInd
   const labels = { ...LABELS[language], tutorObservation: tutorObservationLabel(language, report.tutorSex) };
   const trimester = TRIMESTERS[language][report.trimester.id] ?? report.trimester.name;
   const trimesterValue = trimester.replace(/\s+(?:trimestre|term|hiruhilekoa)$/i, '');
+  const assessmentWeightNotice = ASSESSMENT_WEIGHT_NOTICE[language].replace('{exam}', String(report.centerConfiguration.examWeight)).replace('{continuous}', String(report.centerConfiguration.continuousAssessmentWeight));
   const subjectSections = report.subjects.map(reportSubject => {
     const studentSubject = student.subjects.find(subject => subject.name === reportSubject.name);
     if (!studentSubject) return '';
@@ -96,13 +105,14 @@ export function buildStudentReportHtml(report: TrackingReportsExport, studentInd
   </style></head><body>
     <header class="report-header"><div class="brand">${report.schoolLogo ? `<img class="logo" src="${escapeHtml(report.schoolLogo)}" alt="">` : '<div class="mark">E</div>'}</div><div class="report-title"><h1>${escapeHtml(labels.title)}</h1><p>${escapeHtml(trimester)} · ${escapeHtml(labels.report)} ${report.report.sequence}</p></div></header>
     <section class="student-card"><div><span>${escapeHtml(labels.student)}</span><strong>${escapeHtml(student.name)}</strong></div><div><span>${escapeHtml(labels.course)}</span><strong>${escapeHtml(report.course.name)}</strong></div><div><span>${escapeHtml(labels.trimester)}</span><strong>${escapeHtml(trimesterValue)}</strong></div><div><span>${escapeHtml(labels.report)}</span><strong>${report.report.sequence}</strong></div><div><span>${escapeHtml(labels.issued)}</span><strong>${escapeHtml(displayDate(report.generatedAt.slice(0, 10), language))}</strong></div></section>
+    <aside class="assessment-weight-notice" style="border:1px solid #bcd9cf;border-left:4px solid #18705d;background:#eef8f4;border-radius:7px;padding:9px 11px;margin:0 0 16px;font-size:10px;font-weight:600;color:#244b40;line-height:1.4">${escapeHtml(assessmentWeightNotice)}</aside>
     ${subjectSections}
     <section class="tutor-note"><h2>${escapeHtml(labels.tutorObservation)}</h2><p>${escapeHtml(student.tutorObservation.trim() || labels.noObservation)}</p></section>
     <section class="family-signature"><span>${escapeHtml(labels.familySignature)}</span><div></div></section>
   </body></html>`;
 }
 
-const pdfFooterTemplate = '<div style="width:100%;font-family:Segoe UI,Arial,sans-serif;font-size:8px;color:#89948f;border-top:1px solid #dfe6e3;padding:6px 13mm 0;display:flex;justify-content:space-between"><span>EduTrack v1.0.0</span><span><span class="pageNumber"></span>/<span class="totalPages"></span></span></div>';
+const pdfFooterTemplate = '<div style="width:100%;font-family:Segoe UI,Arial,sans-serif;font-size:8px;color:#89948f;border-top:1px solid #dfe6e3;padding:6px 13mm 0;display:flex;justify-content:space-between"><span>EduTrack v1.1.0</span><span><span class="pageNumber"></span>/<span class="totalPages"></span></span></div>';
 
 export function studentReportFilename(report: TrackingReportsExport, studentName: string) {
   const safeStudent = studentName.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'alumno';
@@ -110,6 +120,26 @@ export function studentReportFilename(report: TrackingReportsExport, studentName
   const trimester = report.trimester.id.replace('_', '');
   const documentName = report.language === 'ca' ? 'full' : report.language === 'en' ? 'tracker' : report.language === 'eu' ? 'fitxa' : report.language === 'gl' ? 'folla' : 'hoja';
   return `${course}_${trimester}_${documentName}-${report.report.sequence}_${safeStudent}_${PDF_LANGUAGE_SUFFIX[report.language]}.pdf`;
+}
+
+export function combinedStudentReportFilename(report: TrackingReportsExport) {
+  const course = report.course.level.replace('_', '');
+  const trimester = report.trimester.id.replace('_', '');
+  const documentName = report.language === 'ca' ? 'full' : report.language === 'en' ? 'tracker' : report.language === 'eu' ? 'fitxa' : report.language === 'gl' ? 'folla' : 'hoja';
+  return `${course}_${trimester}_${documentName}-${report.report.sequence}_todos_${PDF_LANGUAGE_SUFFIX[report.language]}.pdf`;
+}
+
+export function buildCombinedStudentReportHtml(report: TrackingReportsExport) {
+  if (report.students.length === 0) throw new Error('NO_STUDENTS');
+  const pages = report.students.map((_, index) => {
+    const html = buildStudentReportHtml(report, index);
+    const body = html.match(/<body>([\s\S]*)<\/body>/)?.[1];
+    if (!body) throw new Error('INVALID_REPORT_HTML');
+    return `<article class="combined-student-report">${body}</article>`;
+  }).join('');
+  const styles = buildStudentReportHtml(report, 0).match(/<style>([\s\S]*)<\/style>/)?.[1];
+  if (!styles) throw new Error('INVALID_REPORT_HTML');
+  return `<!doctype html><html lang="${report.language}"><head><meta charset="utf-8"><title>EduTrack</title><style>${styles}.combined-student-report{break-after:page}.combined-student-report:last-child{break-after:auto}</style></head><body>${pages}</body></html>`;
 }
 
 async function availablePath(directory: string, filename: string) {
@@ -133,6 +163,10 @@ export async function writeStudentReportPdfs(report: TrackingReportsExport, dire
       await writeFile(path, pdf);
       count += 1;
     }
+    const combinedHtml = buildCombinedStudentReportHtml(report);
+    await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(combinedHtml)}`);
+    const combinedPdf = await printWindow.webContents.printToPDF({ displayHeaderFooter: true, headerTemplate: '<div></div>', footerTemplate: pdfFooterTemplate, printBackground: true, preferCSSPageSize: true, margins: { top: 0.5, bottom: 0.55, left: 0, right: 0 } });
+    await writeFile(await availablePath(directory, combinedStudentReportFilename(report)), combinedPdf);
   } finally {
     if (!printWindow.isDestroyed()) printWindow.destroy();
   }

@@ -14,17 +14,18 @@ describe('catalog-parser', () => {
   });
 
   it('lee la configuración completa del centro en un solo archivo', () => {
-    expect(parseCenterFile('Curso;Asignaturas;Alumnos\n3r ESO;Llengua Catalana|Matemàtiques;Anna Pérez|Marc López', '.csv')).toEqual({ ok: true, courses: [{ name: '3r ESO', subjects: ['Llengua Catalana', 'Matemàtiques'], students: ['Anna Pérez', 'Marc López'] }] });
-    expect(parseCenterFile('{"courses":[{"name":"3r ESO","subjects":["Llengua Catalana"],"students":["Anna","Marc"]}]}', '.json').ok).toBe(true);
+    expect(parseCenterFile('Curso;Asignaturas;Alumnos\n3r ESO;Llengua Catalana|Matemàtiques;Anna Pérez|Marc López', '.csv')).toMatchObject({ ok: true, courses: [{ name: '3r ESO', subjects: ['Llengua Catalana', 'Matemàtiques'], students: ['Anna Pérez', 'Marc López'] }], centerConfiguration: { examWeight: 70, continuousAssessmentWeight: 30, finalReportGradeMode: 'NUMERIC' } });
+    expect(parseCenterFile('{"assessmentWeights":{"exam":60,"continuousAssessment":40},"finalReportGradeMode":"LETTER","courses":[{"name":"3r ESO","subjects":["Llengua Catalana"],"students":["Anna","Marc"]}]}', '.json')).toMatchObject({ ok: true, centerConfiguration: { examWeight: 60, continuousAssessmentWeight: 40, finalReportGradeMode: 'LETTER' } });
   });
 
-  it.each(['csv', 'json'])('valida el ejemplo completo del centro en %s', extension => {
-    const content = readFileSync(new URL(`../../../examples/datos_centro_ejemplo.${extension}`, import.meta.url), 'utf8');
-    const result = parseCenterFile(content, `.${extension}`);
+  it('valida el ejemplo completo del centro con configuración', () => {
+    const content = readFileSync(new URL('../../../examples/datos_centro_configuracion_ejemplo.json', import.meta.url), 'utf8');
+    const result = parseCenterFile(content, '.json');
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.courses).toHaveLength(4);
-    expect(result.courses.map(course => course.students.length)).toEqual([30, 30, 30, 30]);
-    expect(new Set(result.courses.flatMap(course => course.students)).size).toBe(120);
+    expect(result.courses.map(course => course.students.length)).toEqual([2, 2, 2, 2]);
+    expect(result.centerConfiguration).toMatchObject({ examWeight: 70, continuousAssessmentWeight: 30, finalReportGradeMode: 'NUMERIC' });
+    expect(result.centerConfiguration.grades).toEqual(expect.arrayContaining([{ grade: 'NA-', from: 0 }, { grade: 'AE+', from: 9.8 }]));
   });
 });

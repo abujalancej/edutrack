@@ -31,6 +31,7 @@ export function buildTrackingReports(db: AppDatabase, reportId: number): Trackin
     generatedAt: new Date().toISOString(),
     language: db.getLanguage(),
     schoolLogo: db.getSchoolLogo() || undefined,
+    centerConfiguration: db.getCenterConfiguration(),
     tutorSex: db.getProfile().sex,
     course: { level: courseLevel, name: db.courseName(courseLevel) },
     trimester: { id: trimester, name: TRIMESTER_LABELS[trimester] },

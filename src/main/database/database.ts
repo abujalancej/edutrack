@@ -1,13 +1,14 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { COURSE_LABELS, COURSE_LEVELS, normalizeTrimester, SUBJECTS_BY_COURSE, type CourseLevel, type Trimester } from '../../shared/catalogs/catalogs';
+import { DEFAULT_CENTER_CONFIGURATION, normalizeCenterConfiguration } from '../../shared/center/center-configuration';
 import { isCompleteGradeValue, normalizeGradeValue } from '../../shared/grades/grades';
-import type { AppLanguage, AssessmentKind, ConfiguredCourse, ConfiguredSubject, FullSeguimentExport, GradeMode, ImportedWorksheetDetail, ImportedWorksheetSummary, InitialState, Student, TeacherProfile, TrackingReportSummary, WorksheetDetail, WorksheetSummary } from '../../shared/types/models';
+import type { AppLanguage, AssessmentKind, CenterConfiguration, ConfiguredCourse, ConfiguredSubject, FullSeguimentExport, GradeMode, ImportedWorksheetDetail, ImportedWorksheetSummary, InitialState, Student, TeacherProfile, TrackingReportSummary, WorksheetDetail, WorksheetSummary } from '../../shared/types/models';
 
 type Row = Record<string, any>;
 
-const isCompleteImportedGrade = (value: string, mode: GradeMode) => {
-  return isCompleteGradeValue(value, mode);
+const isCompleteImportedGrade = (value: string, mode: GradeMode, grades: CenterConfiguration['grades']) => {
+  return isCompleteGradeValue(value, mode, grades);
 };
 
 const normalizeImportedNumericGrades = (data: FullSeguimentExport): FullSeguimentExport => {
@@ -39,7 +40,9 @@ export class AppDatabase {
       );
       INSERT OR IGNORE INTO teacher_profile (id) VALUES (1);
       CREATE TABLE IF NOT EXISTS app_preferences (
-        id INTEGER PRIMARY KEY CHECK (id = 1), language TEXT NOT NULL DEFAULT 'es', school_logo TEXT NOT NULL DEFAULT ''
+        id INTEGER PRIMARY KEY CHECK (id = 1), language TEXT NOT NULL DEFAULT 'es', school_logo TEXT NOT NULL DEFAULT '',
+        exam_weight REAL NOT NULL DEFAULT 70, continuous_assessment_weight REAL NOT NULL DEFAULT 30,
+        final_report_grade_mode TEXT NOT NULL DEFAULT 'NUMERIC', grades_json TEXT NOT NULL DEFAULT '[]'
       );
       INSERT OR IGNORE INTO app_preferences (id, language) VALUES (1, 'es');
       CREATE TABLE IF NOT EXISTS configured_courses (
@@ -103,6 +106,10 @@ export class AppDatabase {
     if (!valueInfo.some(column => column.name === 'observation')) this.db.exec("ALTER TABLE worksheet_values ADD COLUMN observation TEXT NOT NULL DEFAULT ''");
     const preferenceInfo = this.db.prepare('PRAGMA table_info(app_preferences)').all() as Row[];
     if (!preferenceInfo.some(column => column.name === 'school_logo')) this.db.exec("ALTER TABLE app_preferences ADD COLUMN school_logo TEXT NOT NULL DEFAULT ''");
+    if (!preferenceInfo.some(column => column.name === 'exam_weight')) this.db.exec('ALTER TABLE app_preferences ADD COLUMN exam_weight REAL NOT NULL DEFAULT 70');
+    if (!preferenceInfo.some(column => column.name === 'continuous_assessment_weight')) this.db.exec('ALTER TABLE app_preferences ADD COLUMN continuous_assessment_weight REAL NOT NULL DEFAULT 30');
+    if (!preferenceInfo.some(column => column.name === 'final_report_grade_mode')) this.db.exec("ALTER TABLE app_preferences ADD COLUMN final_report_grade_mode TEXT NOT NULL DEFAULT 'NUMERIC'");
+    if (!preferenceInfo.some(column => column.name === 'grades_json')) this.db.exec("ALTER TABLE app_preferences ADD COLUMN grades_json TEXT NOT NULL DEFAULT '[]'");
     const worksheetInfo = this.db.prepare('PRAGMA table_info(worksheets)').all() as Row[];
     if (!worksheetInfo.some(column => column.name === 'grade_mode')) this.db.exec("ALTER TABLE worksheets ADD COLUMN grade_mode TEXT NOT NULL DEFAULT 'NUMERIC'");
     if (!worksheetInfo.some(column => column.name === 'is_elective')) this.db.exec('ALTER TABLE worksheets ADD COLUMN is_elective INTEGER NOT NULL DEFAULT 0');
@@ -192,6 +199,17 @@ export class AppDatabase {
 
   getSchoolLogo() { return (this.db.prepare('SELECT school_logo FROM app_preferences WHERE id = 1').get() as Row).school_logo as string; }
   saveSchoolLogo(logo: string) { this.db.prepare('UPDATE app_preferences SET school_logo = ? WHERE id = 1').run(logo); }
+  getCenterConfiguration(): CenterConfiguration {
+    const row = this.db.prepare('SELECT exam_weight, continuous_assessment_weight, final_report_grade_mode, grades_json FROM app_preferences WHERE id = 1').get() as Row;
+    const examWeight = Number(row.exam_weight); const continuousAssessmentWeight = Number(row.continuous_assessment_weight);
+    try { return normalizeCenterConfiguration({ examWeight, continuousAssessmentWeight, finalReportGradeMode: row.final_report_grade_mode === 'LETTER' ? 'LETTER' : 'NUMERIC', grades: JSON.parse(row.grades_json || '[]') }); }
+    catch { return structuredClone(DEFAULT_CENTER_CONFIGURATION); }
+  }
+  saveCenterConfiguration(configuration: CenterConfiguration) {
+    const { examWeight, continuousAssessmentWeight, finalReportGradeMode, grades } = normalizeCenterConfiguration(configuration);
+    this.db.prepare('UPDATE app_preferences SET exam_weight = ?, continuous_assessment_weight = ?, final_report_grade_mode = ?, grades_json = ? WHERE id = 1').run(examWeight, continuousAssessmentWeight, finalReportGradeMode, JSON.stringify(grades));
+    return this.getCenterConfiguration();
+  }
 
   listTutorObservations() {
     const observations: Record<string, string> = {};
@@ -225,6 +243,7 @@ export class AppDatabase {
       this.db.exec('DELETE FROM worksheets');
       this.db.exec('DELETE FROM students');
       this.db.exec('DELETE FROM configured_courses');
+      this.saveCenterConfiguration(DEFAULT_CENTER_CONFIGURATION);
     });
   }
 
@@ -290,7 +309,7 @@ export class AppDatabase {
     return this.listSubjects();
   }
 
-  replaceCenterData(input: Array<{ name: string; subjects: string[]; students: string[] }>) {
+  replaceCenterData(input: Array<{ name: string; subjects: string[]; students: string[] }>, centerConfiguration: CenterConfiguration = DEFAULT_CENTER_CONFIGURATION) {
     const cleaned = input.map(course => ({ name: course.name.trim(), subjects: [...new Set(course.subjects.map(value => value.trim()).filter(Boolean))], students: [...new Set(course.students.map(value => value.trim()).filter(Boolean))] })).filter(course => course.name);
     if (!cleaned.length) throw new Error('El archivo no contiene cursos.');
     const existingCourses = this.listCourses(); const byName = new Map(existingCourses.map(course => [course.name.toLocaleLowerCase(), course]));
@@ -323,8 +342,9 @@ export class AppDatabase {
         course.students.forEach((name, index) => { const match = available.get(name)?.shift(); if (match) { retainedStudents.add(match.id); updateStudentOrder.run(index, match.id); } else addStudent.run(course.id, name, index, this.now()); });
         (existingStudents.get(course.id) ?? []).filter(student => !retainedStudents.has(student.id)).forEach(student => removeStudent.run(student.id));
       });
+      this.saveCenterConfiguration(centerConfiguration);
     });
-    return { courses: this.listCourses(), subjects: this.listSubjects(), students: this.listStudents() };
+    return { courses: this.listCourses(), subjects: this.listSubjects(), students: this.listStudents(), centerConfiguration: this.getCenterConfiguration() };
   }
 
   listStudents(courseLevel?: CourseLevel): Student[] {
@@ -387,7 +407,7 @@ export class AppDatabase {
   }
 
   listWorksheets(): WorksheetSummary[] {
-    return (this.db.prepare(`SELECT w.*,
+    const summaries = (this.db.prepare(`SELECT w.*,
       (SELECT COUNT(*) FROM worksheet_columns c WHERE c.worksheet_id = w.id AND c.kind = 'EXAM') AS exam_count,
       (SELECT COUNT(*) FROM worksheet_columns c WHERE c.worksheet_id = w.id AND c.kind = 'CONTINUOUS_ASSESSMENT') AS continuous_count,
       CASE WHEN (SELECT COUNT(*) FROM students s WHERE s.course_level = w.course_level
@@ -406,6 +426,16 @@ export class AppDatabase {
           * (SELECT COUNT(*) FROM worksheet_columns c WHERE c.worksheet_id = w.id)
       THEN 1 ELSE 0 END AS is_complete
       FROM worksheets w ORDER BY w.course_level, w.trimester, w.subject`).all() as Row[]).map(this.mapWorksheet);
+    return summaries.map(summary => ({ ...summary, isComplete: this.isWorksheetComplete(summary) }));
+  }
+
+  private isWorksheetComplete(worksheet: WorksheetSummary) {
+    const columns = (this.db.prepare('SELECT id FROM worksheet_columns WHERE worksheet_id = ?').all(worksheet.id) as Row[]).map(row => Number(row.id));
+    const students = (this.db.prepare(`SELECT id FROM students s WHERE s.course_level = ? AND (? = 0 OR NOT EXISTS (SELECT 1 FROM worksheet_disabled_students d WHERE d.worksheet_id = ? AND d.student_id = s.id))`).all(worksheet.courseLevel, worksheet.isElective ? 1 : 0, worksheet.id) as Row[]).map(row => Number(row.id));
+    if (!columns.length || !students.length) return false;
+    const values = new Map((this.db.prepare('SELECT student_id, column_id, value FROM worksheet_values WHERE worksheet_id = ?').all(worksheet.id) as Row[]).map(row => [`${row.student_id}:${row.column_id}`, row.value as string]));
+    const grades = this.getCenterConfiguration().grades;
+    return students.every(studentId => columns.every(columnId => isCompleteGradeValue(values.get(`${studentId}:${columnId}`) ?? '', worksheet.gradeMode, grades)));
   }
 
   private mapWorksheet = (row: Row): WorksheetSummary => ({
@@ -502,7 +532,7 @@ export class AppDatabase {
     if (!worksheet) throw new Error('No se ha encontrado la hoja.');
     const current = this.db.prepare('SELECT value, observation FROM worksheet_values WHERE worksheet_id = ? AND student_id = ? AND column_id = ?')
       .get(worksheetId, studentId, columnId) as Row | undefined;
-    const grade = field === 'grade' ? worksheet.grade_mode === 'NUMERIC' ? normalizeGradeValue(value) : value : current?.value ?? '';
+    const grade = field === 'grade' ? normalizeGradeValue(value) : current?.value ?? '';
     const observation = field === 'observation' ? value : current?.observation ?? '';
     if (!grade && !observation) {
       this.db.prepare('DELETE FROM worksheet_values WHERE worksheet_id = ? AND student_id = ? AND column_id = ?').run(worksheetId, studentId, columnId);
@@ -559,9 +589,10 @@ export class AppDatabase {
     const payload = row.payload_json ? JSON.parse(row.payload_json) as FullSeguimentExport : null;
     const enabledStudents = payload?.students.filter(student => student.enabled !== false) ?? [];
     const gradeMode = payload?.subject.gradeMode ?? 'NUMERIC';
+    const grades = this.getCenterConfiguration().grades;
     const gradedStudentNames = payload && payload.columns.length > 0
       ? enabledStudents
-        .filter(student => payload.columns.every(column => isCompleteImportedGrade(student.values[column.id] ?? '', gradeMode)))
+        .filter(student => payload.columns.every(column => isCompleteImportedGrade(student.values[column.id] ?? '', gradeMode, grades)))
         .map(student => student.name)
       : [];
     return {
@@ -641,6 +672,6 @@ export class AppDatabase {
   }
 
   getInitialState(): InitialState {
-    return { profile: this.getProfile(), language: this.getLanguage(), schoolLogo: this.getSchoolLogo(), courses: this.listCourses(), subjects: this.listSubjects(), students: this.listStudents(), worksheets: this.listWorksheets(), trackingReports: this.listTrackingReports(), imports: this.listImports(), tutorObservations: this.listTutorObservations() };
+    return { profile: this.getProfile(), language: this.getLanguage(), schoolLogo: this.getSchoolLogo(), centerConfiguration: this.getCenterConfiguration(), courses: this.listCourses(), subjects: this.listSubjects(), students: this.listStudents(), worksheets: this.listWorksheets(), trackingReports: this.listTrackingReports(), imports: this.listImports(), tutorObservations: this.listTutorObservations() };
   }
 }

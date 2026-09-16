@@ -3,6 +3,7 @@ import { AppDatabase } from './database';
 import { buildExport, suggestedFilename } from '../export/export-service';
 import { buildTrackingReports } from '../export/tracking-report-service';
 import { COURSE_LABELS, COURSE_LEVELS, SUBJECTS_BY_COURSE } from '../../shared/catalogs/catalogs';
+import { DEFAULT_CENTER_CONFIGURATION } from '../../shared/center/center-configuration';
 import type { FullSeguimentExport } from '../../shared/types/models';
 
 describe('AppDatabase', () => {
@@ -134,11 +135,28 @@ describe('AppDatabase', () => {
     expect(db.listWorksheets().find(item => item.id === sheet.id)?.isComplete).toBe(true);
   });
 
+  it('valida el catálogo de letras y permite notas numéricas en hojas con letras', () => {
+    const anna = db.addStudent('ESO_3', 'Anna'); const pau = db.addStudent('ESO_3', 'Pau');
+    const sheet = db.createWorksheet({ courseLevel: 'ESO_3', trimester: 'T_1', subject: 'Llengua Catalana', gradeMode: 'LETTER' });
+    const exam = db.addAssessment(sheet.id, 'EXAM', 'Examen', '2026-09-12').columns[0];
+    db.saveCell(sheet.id, anna.id, exam.id, 'grade', 'an+');
+    db.saveCell(sheet.id, pau.id, exam.id, 'grade', '7,5');
+    expect(db.getWorksheet(sheet.id).values[`${anna.id}:${exam.id}`]).toBe('AN+');
+    expect(db.listWorksheets().find(item => item.id === sheet.id)?.isComplete).toBe(true);
+    db.saveCell(sheet.id, anna.id, exam.id, 'grade', 'NO_VALIDA');
+    expect(db.listWorksheets().find(item => item.id === sheet.id)?.isComplete).toBe(false);
+  });
+
   it('permite sustituir los catálogos por los propios del centro', () => {
     expect(db.replaceCourses(['Infantil 5 anys', '1r Batxillerat']).map(course => course.name)).toEqual(['Infantil 5 anys', '1r Batxillerat']);
     expect(db.replaceSubjectCatalog([{ course: '1r Batxillerat', subject: 'Literatura universal' }]).map(subject => subject.name)).toEqual(['Literatura universal']);
     db.saveSchoolLogo('data:image/png;base64,abc');
     expect(db.getInitialState().schoolLogo).toBe('data:image/png;base64,abc');
+  });
+
+  it('guarda la ponderación y el formato del informe desde los datos del centro', () => {
+    db.replaceCenterData([{ name: '1r ESO', subjects: ['Català'], students: ['Aina Bosch'] }], { ...DEFAULT_CENTER_CONFIGURATION, examWeight: 60, continuousAssessmentWeight: 40, finalReportGradeMode: 'LETTER' });
+    expect(db.getInitialState().centerConfiguration).toMatchObject({ examWeight: 60, continuousAssessmentWeight: 40, finalReportGradeMode: 'LETTER' });
   });
 
   it('borra los datos académicos del centro y conserva las preferencias personales', () => {
