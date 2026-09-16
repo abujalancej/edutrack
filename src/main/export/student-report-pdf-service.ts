@@ -26,6 +26,7 @@ const TRIMESTERS: Record<AppLanguage, Record<string, string>> = {
 };
 
 const LOCALES: Record<AppLanguage, string> = { es: 'es-ES', ca: 'ca-ES', en: 'en-GB', eu: 'eu-ES', gl: 'gl-ES' };
+const PDF_LANGUAGE_SUFFIX: Record<AppLanguage, string> = { es: 'ESP', ca: 'CAT', en: 'ENG', eu: 'EUS', gl: 'GAL' };
 const FOLDER_DIALOG: Record<AppLanguage, { title: string; buttonLabel: string }> = {
   es: { title: 'Selecciona la carpeta para guardar los PDF', buttonLabel: 'Guardar aquí' },
   ca: { title: 'Selecciona la carpeta on desar els PDF', buttonLabel: 'Desar aquí' },
@@ -107,7 +108,7 @@ export function studentReportFilename(report: TrackingReportsExport, studentName
   const course = report.course.level.replace('_', '');
   const trimester = report.trimester.id.replace('_', '');
   const documentName = report.language === 'ca' ? 'full' : report.language === 'en' ? 'tracker' : report.language === 'eu' ? 'fitxa' : report.language === 'gl' ? 'folla' : 'hoja';
-  return `${course}_${trimester}_${documentName}-${report.report.sequence}_${safeStudent}.pdf`;
+  return `${course}_${trimester}_${documentName}-${report.report.sequence}_${safeStudent}_${PDF_LANGUAGE_SUFFIX[report.language]}.pdf`;
 }
 
 async function availablePath(directory: string, filename: string) {

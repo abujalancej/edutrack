@@ -35,7 +35,14 @@ describe('student report PDF content', () => {
   });
 
   it('usa identificadores compactos y un nombre de alumno seguro en cada PDF', () => {
-    expect(studentReportFilename(report, 'Anna García')).toBe('ESO1_T1_full-2_anna-garcia.pdf');
+    expect(studentReportFilename(report, 'Anna García')).toBe('ESO1_T1_full-2_anna-garcia_CAT.pdf');
+  });
+
+  it.each([
+    ['es', 'ESP'], ['ca', 'CAT'], ['en', 'ENG'], ['eu', 'EUS'], ['gl', 'GAL']
+  ] as const)('añade el sufijo de idioma %s al final del PDF', (language, suffix) => {
+    const localizedReport = { ...report, language };
+    expect(studentReportFilename(localizedReport, 'Anna García')).toMatch(new RegExp(`_${suffix}\\.pdf$`));
   });
 
   it('trata una optativa como una asignatura normal y deja vacías las notas del alumnado que no la cursa', () => {
