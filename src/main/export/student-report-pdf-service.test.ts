@@ -6,13 +6,13 @@ import { buildCombinedStudentReportHtml, buildStudentReportHtml, combinedStudent
 const report: TrackingReportsExport = {
   format: 'edutrack-tracking-reports', version: 1, generatedAt: '2026-09-14T10:00:00.000Z', language: 'ca',
   centerConfiguration: { ...DEFAULT_CENTER_CONFIGURATION, hasAssessmentWeights: true },
-  course: { level: 'ESO_1', name: '1r ESO' }, trimester: { id: 'T_1', name: '1r Trimestre' }, report: { sequence: 2 },
+  course: { level: 'ESO_1', name: '1r ESO' }, trimester: { id: 'T_1', name: '1r Trimestre' }, report: { sequence: 2, derivedFromSequence: 1 },
   subjects: [
     {
       name: 'Llengua Catalana', teacher: { firstName: 'Marta', lastName: 'Serra' }, gradeMode: 'NUMERIC', exportedAt: '2026-09-13T10:00:00.000Z',
       columns: [
-        { id: 'exam-1', name: 'Examen 1', kind: 'EXAM', assessmentDate: '2026-09-10' },
-        { id: 'activity-1', name: 'Comentari de text', kind: 'CONTINUOUS_ASSESSMENT', assessmentDate: '2026-09-12' }
+        { id: 'exam-1', name: 'Examen 1', kind: 'EXAM', assessmentDate: '2026-09-10', isExisting: true },
+        { id: 'activity-1', name: 'Comentari de text', kind: 'CONTINUOUS_ASSESSMENT', assessmentDate: '2026-09-12', isExisting: false }
       ]
     }
   ],
@@ -90,7 +90,14 @@ describe('student report PDF content', () => {
 
   it('omite la información de porcentajes sin una configuración explícita', () => {
     const html = buildStudentReportHtml({ ...report, centerConfiguration: DEFAULT_CENTER_CONFIGURATION }, 0);
-    expect(html).not.toContain('assessment-weight-notice');
+    expect(html).not.toContain('<aside class="assessment-weight-notice">');
+  });
+
+  it('diferencia las filas heredadas y explica el código de color', () => {
+    const html = buildStudentReportHtml(report, 0);
+    expect(html.match(/<tr class="previous-assessment-row">/g)).toHaveLength(1);
+    expect(html).toContain('report-change-legend');
+    expect(html).toContain('Les files grisenques ja eren a l’informe anterior.');
   });
 
   it('combina todos los informes del alumnado en un documento paginado', () => {

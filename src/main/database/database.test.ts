@@ -356,12 +356,19 @@ describe('AppDatabase', () => {
     const second = db.copyTrackingReport(first.id);
     expect(() => db.copyTrackingReport(first.id)).toThrow('ONLY_LATEST_REPORT_CAN_BE_COPIED');
 
-    db.saveImport(delivery('9'), true);
+    db.saveImport({
+      ...delivery('9'),
+      columns: [{ id: 'exam', name: 'Examen' }, { id: 'project', name: 'Projecte' }],
+      students: [{ name: student.fullName, values: { exam: '9', project: '8' } }]
+    }, true);
     db.saveImport(delivery('8', 'Llengua Castellana'), false);
 
     expect(db.listTrackingReports().map(report => report.sequence)).toEqual([1, 2]);
     expect(db.getImportedWorksheet(db.listImports(first.id)[0].id).payload.students[0].values.exam).toBe('6');
     expect(db.getImportedWorksheet(db.listImports(second.id).find(item => item.subject === 'Música')!.id).payload.students[0].values.exam).toBe('9');
+    const generated = buildTrackingReports(db, second.id);
+    expect(generated.report).toEqual({ sequence: 2, derivedFromSequence: 1 });
+    expect(generated.subjects[1].columns.map(column => ({ name: column.name, isExisting: column.isExisting }))).toEqual([{ name: 'Examen', isExisting: true }, { name: 'Projecte', isExisting: false }]);
     expect(db.listImports(first.id).map(item => item.subject)).toEqual(['Música']);
     expect(db.listImports(second.id).map(item => item.subject)).toEqual(['Llengua Castellana', 'Música']);
     expect(db.listTutorObservations()[`${second.id}:${student.id}`]).toBe('Observación inicial');

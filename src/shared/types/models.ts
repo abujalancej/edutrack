@@ -28,7 +28,7 @@ export interface WorksheetDetail extends WorksheetSummary {
   observations: Record<string, string>;
   disabledStudentIds: number[];
 }
-export interface ExportColumn { id: string; name: string; kind?: AssessmentKind; assessmentDate?: string }
+export interface ExportColumn { id: string; name: string; kind?: AssessmentKind; assessmentDate?: string; isExisting?: boolean }
 export interface ExportStudent { name: string; enabled?: boolean; values: Record<string, string>; observations?: Record<string, string> }
 export interface FullSeguimentExport {
   format: 'full-seguiment'; version: 1; exportedAt: string;
@@ -54,7 +54,7 @@ export interface TrackingReportsExport {
   centerConfiguration: CenterConfiguration;
   course: { level: CourseLevel; name: string };
   trimester: { id: Trimester; name: string };
-  report: { sequence: number };
+  report: { sequence: number; derivedFromSequence?: number };
   subjects: Array<{
     name: string; teacher: TeacherProfile; gradeMode?: GradeMode; exportedAt: string; columns: ExportColumn[];
   }>;

@@ -1,8 +1,20 @@
 import { TRIMESTER_LABELS, isCourseLevel, isTrimester } from '../../shared/catalogs/catalogs';
-import type { ImportedWorksheetDetail, TrackingReportsExport } from '../../shared/types/models';
+import type { ExportColumn, FullSeguimentExport, ImportedWorksheetDetail, TrackingReportsExport } from '../../shared/types/models';
 import type { AppDatabase } from '../database/database';
 
 type ResolvedSubject = { name: string; delivery: ImportedWorksheetDetail };
+
+const columnIdentity = (column: ExportColumn) => `${column.name.trim().toLocaleLowerCase()}|${column.kind ?? 'CONTINUOUS_ASSESSMENT'}`;
+
+const markExistingColumns = (columns: ExportColumn[], previousColumns: ExportColumn[]) => {
+  const availablePreviousColumns = [...previousColumns];
+  return columns.map(column => {
+    const index = availablePreviousColumns.findIndex(previous => previous.id === column.id || columnIdentity(previous) === columnIdentity(column));
+    if (index < 0) return { ...column, isExisting: false };
+    availablePreviousColumns.splice(index, 1);
+    return { ...column, isExisting: true };
+  });
+};
 
 export function buildTrackingReports(db: AppDatabase, reportId: number): TrackingReportsExport {
   const report = db.getTrackingReport(reportId);
@@ -12,6 +24,15 @@ export function buildTrackingReports(db: AppDatabase, reportId: number): Trackin
   const imported = db.listImports(reportId)
     .filter(item => item.isBlocking)
     .map(item => db.getImportedWorksheet(item.id));
+  const sourceReport = report.sequence > 1
+    ? db.listTrackingReports().find(item => item.courseLevel === courseLevel && item.trimester === trimester && item.sequence === report.sequence - 1)
+    : undefined;
+  const sourceColumnsBySubject = new Map<string, FullSeguimentExport['columns']>();
+  if (sourceReport) {
+    db.listImports(sourceReport.id).forEach(item => {
+      sourceColumnsBySubject.set(item.subject, db.getImportedWorksheet(item.id).payload.columns);
+    });
+  }
   // Una optativa es una asignatura normal con un subconjunto de alumnado.
   // No se agrupan entregas ni se infiere una asignatura llamada «Optativa».
   const deliveryBySubject = new Map(imported.map(item => [item.subject, item] as const));
@@ -35,14 +56,14 @@ export function buildTrackingReports(db: AppDatabase, reportId: number): Trackin
     tutorSex: db.getProfile().sex,
     course: { level: courseLevel, name: db.courseName(courseLevel) },
     trimester: { id: trimester, name: TRIMESTER_LABELS[trimester] },
-    report: { sequence: report.sequence },
+    report: { sequence: report.sequence, derivedFromSequence: sourceReport?.sequence },
     subjects: subjects.map(subject => {
       return {
         name: subject.name,
         teacher: subject.delivery.payload.teacher,
         gradeMode: subject.delivery.payload.subject.gradeMode,
         exportedAt: subject.delivery.payload.exportedAt,
-        columns: subject.delivery.payload.columns
+        columns: sourceReport ? markExistingColumns(subject.delivery.payload.columns, sourceColumnsBySubject.get(subject.name) ?? []) : subject.delivery.payload.columns
       };
     }),
     students: students.map(student => ({
