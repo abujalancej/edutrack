@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { COURSE_LABELS, COURSE_LEVELS, normalizeTrimester, SUBJECTS_BY_COURSE, type CourseLevel, type Trimester } from '../../shared/catalogs/catalogs';
 import { DEFAULT_CENTER_CONFIGURATION, normalizeCenterConfiguration } from '../../shared/center/center-configuration';
 import { isCompleteGradeValue, normalizeGradeValue } from '../../shared/grades/grades';
-import type { AppLanguage, AssessmentKind, CenterConfiguration, ConfiguredCourse, ConfiguredSubject, FullSeguimentExport, GradeMode, ImportedWorksheetDetail, ImportedWorksheetSummary, InitialState, Student, TeacherProfile, TrackingReportSummary, WorksheetDetail, WorksheetSummary } from '../../shared/types/models';
+import type { AppLanguage, AssessmentKind, CenterConfiguration, ConfiguredCourse, ConfiguredSubject, FullSeguimentExport, GradeMode, ImportedWorksheetDetail, ImportedWorksheetSummary, InitialState, Student, TeacherProfile, TrackingReportSummary, WorksheetChangeSummary, WorksheetDetail, WorksheetSummary } from '../../shared/types/models';
 
 type Row = Record<string, any>;
 
@@ -62,7 +62,8 @@ export class AppDatabase {
       CREATE TABLE IF NOT EXISTS worksheets (
         id INTEGER PRIMARY KEY AUTOINCREMENT, course_level TEXT NOT NULL, trimester TEXT NOT NULL, subject TEXT NOT NULL,
         grade_mode TEXT NOT NULL DEFAULT 'NUMERIC', is_elective INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(course_level, trimester, subject)
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, copied_from_id INTEGER, roster_snapshot_json TEXT,
+        UNIQUE(course_level, trimester, subject)
       );
       CREATE TABLE IF NOT EXISTS worksheet_disabled_students (
         worksheet_id INTEGER NOT NULL REFERENCES worksheets(id) ON DELETE CASCADE,
@@ -72,7 +73,7 @@ export class AppDatabase {
       CREATE TABLE IF NOT EXISTS worksheet_columns (
         id INTEGER PRIMARY KEY AUTOINCREMENT, worksheet_id INTEGER NOT NULL REFERENCES worksheets(id) ON DELETE CASCADE,
         export_id TEXT NOT NULL UNIQUE, name TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'CONTINUOUS_ASSESSMENT',
-        assessment_date TEXT NOT NULL DEFAULT '', sort_order INTEGER NOT NULL
+        assessment_date TEXT NOT NULL DEFAULT '', sort_order INTEGER NOT NULL, source_column_id INTEGER
       );
       CREATE TABLE IF NOT EXISTS worksheet_values (
         worksheet_id INTEGER NOT NULL REFERENCES worksheets(id) ON DELETE CASCADE,
@@ -116,6 +117,12 @@ export class AppDatabase {
     const worksheetInfo = this.db.prepare('PRAGMA table_info(worksheets)').all() as Row[];
     if (!worksheetInfo.some(column => column.name === 'grade_mode')) this.db.exec("ALTER TABLE worksheets ADD COLUMN grade_mode TEXT NOT NULL DEFAULT 'NUMERIC'");
     if (!worksheetInfo.some(column => column.name === 'is_elective')) this.db.exec('ALTER TABLE worksheets ADD COLUMN is_elective INTEGER NOT NULL DEFAULT 0');
+    if (!worksheetInfo.some(column => column.name === 'copied_from_id')) this.db.exec('ALTER TABLE worksheets ADD COLUMN copied_from_id INTEGER');
+    if (!worksheetInfo.some(column => column.name === 'roster_snapshot_json')) this.db.exec('ALTER TABLE worksheets ADD COLUMN roster_snapshot_json TEXT');
+    const currentWorksheetInfo = this.db.prepare('PRAGMA table_info(worksheets)').all() as Row[];
+    if (currentWorksheetInfo.some(column => column.name === 'roster_snapshot_json')) this.db.prepare(`UPDATE worksheets SET roster_snapshot_json = (SELECT json_group_array(full_name) FROM students WHERE students.course_level = worksheets.course_level ORDER BY sort_order) WHERE roster_snapshot_json IS NULL`).run();
+    const worksheetColumnInfo = this.db.prepare('PRAGMA table_info(worksheet_columns)').all() as Row[];
+    if (!worksheetColumnInfo.some(column => column.name === 'source_column_id')) this.db.exec('ALTER TABLE worksheet_columns ADD COLUMN source_column_id INTEGER');
     let importInfo = this.db.prepare('PRAGMA table_info(imported_worksheets)').all() as Row[];
     if (!importInfo.some(column => column.name === 'is_elective')) { this.db.exec('ALTER TABLE imported_worksheets ADD COLUMN is_elective INTEGER NOT NULL DEFAULT 0'); importInfo = this.db.prepare('PRAGMA table_info(imported_worksheets)').all() as Row[]; }
     if (!importInfo.some(column => column.name === 'is_blocking')) { this.db.exec('ALTER TABLE imported_worksheets ADD COLUMN is_blocking INTEGER NOT NULL DEFAULT 1'); importInfo = this.db.prepare('PRAGMA table_info(imported_worksheets)').all() as Row[]; }
@@ -436,7 +443,7 @@ export class AppDatabase {
           * (SELECT COUNT(*) FROM worksheet_columns c WHERE c.worksheet_id = w.id)
       THEN 1 ELSE 0 END AS is_complete
       FROM worksheets w ORDER BY w.course_level, w.trimester, w.subject`).all() as Row[]).map(this.mapWorksheet);
-    return summaries.map(summary => ({ ...summary, isComplete: this.isWorksheetComplete(summary) }));
+    return summaries.map(summary => ({ ...summary, isComplete: this.isWorksheetComplete(summary), changeSummary: summary.copiedFromId ? this.getWorksheetChanges(summary.id, summary.copiedFromId) : undefined }));
   }
 
   private isWorksheetComplete(worksheet: WorksheetSummary) {
@@ -450,8 +457,24 @@ export class AppDatabase {
 
   private mapWorksheet = (row: Row): WorksheetSummary => ({
     id: row.id, courseLevel: row.course_level, trimester: row.trimester, subject: row.subject, gradeMode: row.grade_mode === 'LETTER' ? 'LETTER' : 'NUMERIC', isElective: Boolean(row.is_elective),
-    createdAt: row.created_at, updatedAt: row.updated_at, isComplete: Boolean(row.is_complete), examCount: Number(row.exam_count ?? 0), continuousAssessmentCount: Number(row.continuous_count ?? 0)
+    createdAt: row.created_at, updatedAt: row.updated_at, isComplete: Boolean(row.is_complete), examCount: Number(row.exam_count ?? 0), continuousAssessmentCount: Number(row.continuous_count ?? 0), copiedFromId: row.copied_from_id === null || row.copied_from_id === undefined ? undefined : Number(row.copied_from_id)
   });
+
+  private getWorksheetChanges(worksheetId: number, sourceWorksheetId: number): WorksheetChangeSummary {
+    const readSnapshot = (id: number) => {
+      const row = this.db.prepare('SELECT roster_snapshot_json FROM worksheets WHERE id = ?').get(id) as Row | undefined;
+      try { return new Set<string>(JSON.parse(row?.roster_snapshot_json ?? '[]')); } catch { return new Set<string>(); }
+    };
+    const sourceStudents = readSnapshot(sourceWorksheetId); const currentStudents = readSnapshot(worksheetId);
+    const addedStudents = [...currentStudents].filter(name => !sourceStudents.has(name));
+    const removedStudents = [...sourceStudents].filter(name => !currentStudents.has(name));
+    const addedAssessments = (this.db.prepare('SELECT name FROM worksheet_columns WHERE worksheet_id = ? AND source_column_id IS NULL ORDER BY sort_order, id').all(worksheetId) as Row[]).map(row => row.name as string);
+    return { addedStudents, removedStudents, addedAssessments };
+  }
+
+  private rosterSnapshot(courseLevel: CourseLevel) {
+    return JSON.stringify(this.listStudents(courseLevel).map(student => student.fullName));
+  }
 
   createWorksheet(input: { courseLevel: CourseLevel; trimester: Trimester; subject: string; gradeMode?: GradeMode; isElective?: boolean }): WorksheetSummary {
     const now = this.now();
@@ -459,8 +482,8 @@ export class AppDatabase {
     if (!['NUMERIC', 'LETTER'].includes(gradeMode)) throw new Error('Tipo de nota no válido.');
     if (gradeMode === 'LETTER' && !this.getCenterConfiguration().hasLetterGrades) throw new Error('Las notas con letras no están configuradas para el centro.');
     try {
-      const result = this.db.prepare('INSERT INTO worksheets(course_level, trimester, subject, grade_mode, is_elective, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .run(input.courseLevel, input.trimester, input.subject, gradeMode, input.isElective ? 1 : 0, now, now);
+      const result = this.db.prepare('INSERT INTO worksheets(course_level, trimester, subject, grade_mode, is_elective, created_at, updated_at, roster_snapshot_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(input.courseLevel, input.trimester, input.subject, gradeMode, input.isElective ? 1 : 0, now, now, this.rosterSnapshot(input.courseLevel));
       return this.listWorksheets().find(sheet => sheet.id === Number(result.lastInsertRowid))!;
     } catch (error) {
       if (String(error).includes('UNIQUE')) throw new Error('DUPLICATE_WORKSHEET', { cause: error });
@@ -477,12 +500,12 @@ export class AppDatabase {
     const now = this.now();
     let newId = 0;
     this.transaction(() => {
-      const result = this.db.prepare('INSERT INTO worksheets(course_level, trimester, subject, grade_mode, is_elective, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .run(source.course_level, trimester, source.subject, source.grade_mode, source.is_elective, now, now);
+      const result = this.db.prepare('INSERT INTO worksheets(course_level, trimester, subject, grade_mode, is_elective, created_at, updated_at, copied_from_id, roster_snapshot_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(source.course_level, trimester, source.subject, source.grade_mode, source.is_elective, now, now, worksheetId, this.rosterSnapshot(source.course_level));
       newId = Number(result.lastInsertRowid);
-      const columns = this.db.prepare('SELECT name, kind, sort_order FROM worksheet_columns WHERE worksheet_id = ? ORDER BY sort_order, id').all(worksheetId) as Row[];
-      const insertColumn = this.db.prepare('INSERT INTO worksheet_columns(worksheet_id, export_id, name, kind, assessment_date, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
-      columns.forEach(column => insertColumn.run(newId, `col_${randomUUID()}`, column.name, column.kind, '', column.sort_order));
+      const insertColumn = this.db.prepare('INSERT INTO worksheet_columns(worksheet_id, export_id, name, kind, assessment_date, sort_order, source_column_id) VALUES (?, ?, ?, ?, ?, ?, ?)');
+      const sourceColumns = this.db.prepare('SELECT id, name, kind, sort_order FROM worksheet_columns WHERE worksheet_id = ? ORDER BY sort_order, id').all(worksheetId) as Row[];
+      sourceColumns.forEach(column => insertColumn.run(newId, `col_${randomUUID()}`, column.name, column.kind, '', column.sort_order, column.id));
       if (source.is_elective) {
         this.db.prepare('INSERT INTO worksheet_disabled_students(worksheet_id, student_id) SELECT ?, student_id FROM worksheet_disabled_students WHERE worksheet_id = ?').run(newId, worksheetId);
       }
@@ -496,7 +519,7 @@ export class AppDatabase {
     const worksheet = this.db.prepare('SELECT * FROM worksheets WHERE id = ?').get(id) as Row | undefined;
     if (!worksheet) throw new Error('No se ha encontrado la hoja.');
     const columns = (this.db.prepare('SELECT * FROM worksheet_columns WHERE worksheet_id = ? ORDER BY sort_order, id').all(id) as Row[])
-      .map(row => ({ id: row.id, worksheetId: row.worksheet_id, exportId: row.export_id, name: row.name, kind: row.kind ?? 'CONTINUOUS_ASSESSMENT', assessmentDate: row.assessment_date ?? '', sortOrder: row.sort_order }));
+      .map(row => ({ id: row.id, worksheetId: row.worksheet_id, exportId: row.export_id, name: row.name, kind: row.kind ?? 'CONTINUOUS_ASSESSMENT', assessmentDate: row.assessment_date ?? '', sortOrder: row.sort_order, sourceColumnId: row.source_column_id === null || row.source_column_id === undefined ? undefined : Number(row.source_column_id) }));
     const values: Record<string, string> = {};
     const observations: Record<string, string> = {};
     for (const row of this.db.prepare('SELECT student_id, column_id, value, observation FROM worksheet_values WHERE worksheet_id = ?').all(id) as Row[]) {
@@ -555,7 +578,8 @@ export class AppDatabase {
   }
 
   deleteColumn(id: number) {
-    const row = this.db.prepare('SELECT worksheet_id FROM worksheet_columns WHERE id = ?').get(id) as Row | undefined;
+    const row = this.db.prepare('SELECT worksheet_id, source_column_id FROM worksheet_columns WHERE id = ?').get(id) as Row | undefined;
+    if (row?.source_column_id !== null && row?.source_column_id !== undefined) throw new Error('COPIED_ASSESSMENT_CANNOT_BE_DELETED');
     if (row) { this.db.prepare('DELETE FROM worksheet_columns WHERE id = ?').run(id); this.touch(row.worksheet_id); }
   }
 

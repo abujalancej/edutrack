@@ -18,8 +18,9 @@ export interface TeacherProfile { firstName: string; lastName: string; sex?: Tea
 export interface ConfiguredCourse { id: CourseLevel; name: string; sortOrder: number }
 export interface ConfiguredSubject { courseId: CourseLevel; name: string; sortOrder: number }
 export interface Student { id: number; courseLevel: CourseLevel; fullName: string; sortOrder: number }
-export interface WorksheetSummary { id: number; courseLevel: CourseLevel; trimester: Trimester; subject: string; gradeMode: GradeMode; isElective: boolean; createdAt: string; updatedAt: string; isComplete: boolean; examCount: number; continuousAssessmentCount: number }
-export interface WorksheetColumn { id: number; worksheetId: number; exportId: string; name: string; kind: AssessmentKind; assessmentDate: string; sortOrder: number }
+export interface WorksheetChangeSummary { addedStudents: string[]; removedStudents: string[]; addedAssessments: string[] }
+export interface WorksheetSummary { id: number; courseLevel: CourseLevel; trimester: Trimester; subject: string; gradeMode: GradeMode; isElective: boolean; createdAt: string; updatedAt: string; isComplete: boolean; examCount: number; continuousAssessmentCount: number; copiedFromId?: number; changeSummary?: WorksheetChangeSummary }
+export interface WorksheetColumn { id: number; worksheetId: number; exportId: string; name: string; kind: AssessmentKind; assessmentDate: string; sortOrder: number; sourceColumnId?: number }
 export interface WorksheetDetail extends WorksheetSummary {
   students: Student[];
   columns: WorksheetColumn[];

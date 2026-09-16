@@ -46,11 +46,13 @@ describe('AppDatabase', () => {
 
   it('copia la estructura de una hoja en otro trimestre sin fechas ni datos', () => {
     const student = db.addStudent('ESO_1', 'Anna Pérez');
+    db.addStudent('ESO_1', 'Pau Soler');
     const source = db.createWorksheet({ courseLevel: 'ESO_1', trimester: 'T_1', subject: 'Música' });
     const exam = db.addAssessment(source.id, 'EXAM', 'Examen 1', '2026-09-12').columns[0];
     const activity = db.addAssessment(source.id, 'CONTINUOUS_ASSESSMENT', 'Comentari', '2026-09-13').columns[1];
     db.saveCell(source.id, student.id, exam.id, 'grade', '8');
     db.saveCell(source.id, student.id, activity.id, 'observation', 'Correcte');
+    db.replaceCourseRoster('ESO_1', ['Anna Pérez', 'Marc López']);
 
     const copy = db.copyWorksheet(source.id, 'T_2');
     const detail = db.getWorksheet(copy.id);
@@ -61,6 +63,11 @@ describe('AppDatabase', () => {
     ]);
     expect(detail.values).toEqual({});
     expect(detail.observations).toEqual({});
+    expect(db.listWorksheets().find(sheet => sheet.id === copy.id)?.changeSummary).toEqual({ addedStudents: ['Marc López'], removedStudents: ['Pau Soler'], addedAssessments: [] });
+    const newAssessment = db.addAssessment(copy.id, 'EXAM', 'Examen 2', '2026-10-01').columns.at(-1)!;
+    expect(db.listWorksheets().find(sheet => sheet.id === copy.id)?.changeSummary?.addedAssessments).toEqual(['Examen 2']);
+    expect(() => db.deleteColumn(detail.columns[0].id)).toThrow('COPIED_ASSESSMENT_CANNOT_BE_DELETED');
+    db.deleteColumn(newAssessment.id);
     expect(() => db.copyWorksheet(source.id, 'T_2')).toThrow('DUPLICATE_WORKSHEET');
   });
 

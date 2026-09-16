@@ -3,6 +3,8 @@
 }
 
 .copy-warning { padding: 11px 13px; border: 1px solid #ead59d; border-left: 4px solid #d89d2b; border-radius: 8px; background: #fff9e9; color: #70551c; font-size: 11px; line-height: 1.45; }
+.worksheet-change-warnings { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.worksheet-change-warnings b { padding: 3px 6px; border-radius: 8px; background: #fff4d9; color: #87631b; font-size: 9px; font-weight: 700; }
 
 .summary-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .teacher-summary { margin-bottom: 20px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
