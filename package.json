@@ -5,7 +5,9 @@
   "main": "dist-electron/main/index.js",
   "author": "EduTrack",
   "license": "MIT",
-  "engines": { "node": ">=22.5" },
+  "engines": {
+    "node": ">=22.5"
+  },
   "scripts": {
     "dev": "concurrently -k \"vite\" \"tsc -p tsconfig.main.json --watch\" \"wait-on tcp:5173 file:dist-electron/main/index.js && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 node --watch-path=dist-electron scripts/run-electron.cjs\"",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.main.json --noEmit",
@@ -16,15 +18,16 @@
     "dist:mac": "npm run build && electron-builder --mac dmg"
   },
   "dependencies": {
+    "pdf-lib": "^1.17.1",
     "react": "latest",
     "react-dom": "latest"
   },
   "devDependencies": {
     "@eslint/js": "latest",
-    "@vitejs/plugin-react": "latest",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
     "concurrently": "latest",
     "cross-env": "latest",
     "electron": "latest",
@@ -41,11 +44,31 @@
   "build": {
     "appId": "com.edutrack.app",
     "productName": "EduTrack",
-    "directories": { "output": "release", "buildResources": "build" },
-    "files": ["dist/**/*", "dist-electron/**/*", "build/icon.png", "package.json"],
-    "win": { "target": "nsis", "icon": "build/icon.ico" },
-    "mac": { "target": "dmg", "icon": "build/icon.icns" },
-    "linux": { "target": "AppImage", "icon": "build/icon.png" },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
