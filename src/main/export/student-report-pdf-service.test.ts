@@ -5,7 +5,7 @@ import { buildCombinedStudentReportHtml, buildStudentReportHtml, combinedStudent
 
 const report: TrackingReportsExport = {
   format: 'edutrack-tracking-reports', version: 1, generatedAt: '2026-09-14T10:00:00.000Z', language: 'ca',
-  centerConfiguration: DEFAULT_CENTER_CONFIGURATION,
+  centerConfiguration: { ...DEFAULT_CENTER_CONFIGURATION, hasAssessmentWeights: true },
   course: { level: 'ESO_1', name: '1r ESO' }, trimester: { id: 'T_1', name: '1r Trimestre' }, report: { sequence: 2 },
   subjects: [
     {
@@ -82,10 +82,15 @@ describe('student report PDF content', () => {
   });
 
   it.each(['es', 'ca', 'en', 'eu', 'gl'] as const)('muestra la ponderación antes de las tablas en %s', language => {
-    const html = buildStudentReportHtml({ ...report, language, centerConfiguration: { ...DEFAULT_CENTER_CONFIGURATION, examWeight: 65, continuousAssessmentWeight: 35 } }, 0);
+    const html = buildStudentReportHtml({ ...report, language, centerConfiguration: { ...DEFAULT_CENTER_CONFIGURATION, examWeight: 65, continuousAssessmentWeight: 35, hasAssessmentWeights: true } }, 0);
     expect(html).toContain('65%');
     expect(html).toContain('35%');
     expect(html.indexOf('assessment-weight-notice')).toBeLessThan(html.indexOf('<table>'));
+  });
+
+  it('omite la información de porcentajes sin una configuración explícita', () => {
+    const html = buildStudentReportHtml({ ...report, centerConfiguration: DEFAULT_CENTER_CONFIGURATION }, 0);
+    expect(html).not.toContain('assessment-weight-notice');
   });
 
   it('combina todos los informes del alumnado en un documento paginado', () => {

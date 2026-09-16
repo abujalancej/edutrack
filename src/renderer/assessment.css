@@ -98,6 +98,9 @@ body { min-width: 720px; }
 .confirm-action-icon { width: 50px; height: 50px; margin: 0 auto 18px; border-radius: 14px; display: grid; place-items: center; background: var(--green-soft); color: var(--green); box-shadow: inset 0 0 0 1px #badbce; }
 .confirm-delete-modal h2 { margin: 0; font-size: 21px; line-height: 1.25; }
 .confirm-delete-message { min-height: 0; max-width: 360px; margin: 12px auto 0 !important; color: #596762 !important; font-size: 14px !important; line-height: 1.55; white-space: pre-line; }
+.delete-confirmation-input { display: flex; flex-direction: column; gap: 7px; margin-top: 18px; color: #4b5e57; font-size: 12px; font-weight: 700; text-align: left; }
+.delete-confirmation-input input { width: 100%; border: 1px solid #c7d4cf; border-radius: 8px; padding: 10px 11px; color: var(--ink); font: inherit; font-weight: 500; outline: none; }
+.delete-confirmation-input input:focus { border-color: var(--green); box-shadow: 0 0 0 3px #19806a15; }
 .confirm-delete-modal .modal-actions { width: 100%; margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .confirm-delete-modal .modal-actions button { width: 100%; min-height: 44px; }
 .import-modal { width: min(780px, calc(100vw - 48px)); max-height: calc(100vh - 48px); display: flex; flex-direction: column; }
@@ -105,7 +108,7 @@ body { min-width: 720px; }
 .import-modal .drop-zone { min-height: 210px; }
 .danger-confirm { min-height: 42px; border: 1px solid #ad4040; border-radius: 8px; padding: 10px 16px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; background: #ad4040; color: #fff; font-size: 14px; font-weight: 700; }
 .danger-confirm:hover { background: #8f3030; }
-.danger-confirm:disabled { opacity: .55; cursor: wait; }
+.danger-confirm:disabled { opacity: .55; cursor: not-allowed; }
 .configuration-format { margin-top: 12px; padding: 9px 11px; border-radius: 8px; background: #f1f5f3; color: #61726c; display: flex; align-items: center; gap: 8px; font-size: 9px; line-height: 1.4; }
 .elective-field { min-height: 54px; padding: 10px 12px; display: grid !important; grid-template-columns: 20px minmax(0, 1fr); align-items: start; gap: 10px !important; border: 1px solid #dbe4e0; border-radius: 9px; background: #f7faf9; cursor: pointer; }
 .elective-field input { width: 17px !important; height: 17px; margin: 2px 0 0; accent-color: var(--green); }

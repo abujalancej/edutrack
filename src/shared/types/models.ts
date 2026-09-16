@@ -11,6 +11,8 @@ export interface CenterConfiguration {
   continuousAssessmentWeight: number;
   finalReportGradeMode: GradeMode;
   grades: GradeConversion[];
+  hasAssessmentWeights: boolean;
+  hasLetterGrades: boolean;
 }
 export interface TeacherProfile { firstName: string; lastName: string; sex?: TeacherSex }
 export interface ConfiguredCourse { id: CourseLevel; name: string; sortOrder: number }

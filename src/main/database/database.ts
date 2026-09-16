@@ -42,7 +42,8 @@ export class AppDatabase {
       CREATE TABLE IF NOT EXISTS app_preferences (
         id INTEGER PRIMARY KEY CHECK (id = 1), language TEXT NOT NULL DEFAULT 'es', school_logo TEXT NOT NULL DEFAULT '',
         exam_weight REAL NOT NULL DEFAULT 70, continuous_assessment_weight REAL NOT NULL DEFAULT 30,
-        final_report_grade_mode TEXT NOT NULL DEFAULT 'NUMERIC', grades_json TEXT NOT NULL DEFAULT '[]'
+        final_report_grade_mode TEXT NOT NULL DEFAULT 'NUMERIC', grades_json TEXT NOT NULL DEFAULT '[]',
+        has_assessment_weights INTEGER NOT NULL DEFAULT 0, has_letter_grades INTEGER NOT NULL DEFAULT 0
       );
       INSERT OR IGNORE INTO app_preferences (id, language) VALUES (1, 'es');
       CREATE TABLE IF NOT EXISTS configured_courses (
@@ -110,6 +111,8 @@ export class AppDatabase {
     if (!preferenceInfo.some(column => column.name === 'continuous_assessment_weight')) this.db.exec('ALTER TABLE app_preferences ADD COLUMN continuous_assessment_weight REAL NOT NULL DEFAULT 30');
     if (!preferenceInfo.some(column => column.name === 'final_report_grade_mode')) this.db.exec("ALTER TABLE app_preferences ADD COLUMN final_report_grade_mode TEXT NOT NULL DEFAULT 'NUMERIC'");
     if (!preferenceInfo.some(column => column.name === 'grades_json')) this.db.exec("ALTER TABLE app_preferences ADD COLUMN grades_json TEXT NOT NULL DEFAULT '[]'");
+    if (!preferenceInfo.some(column => column.name === 'has_assessment_weights')) this.db.exec('ALTER TABLE app_preferences ADD COLUMN has_assessment_weights INTEGER NOT NULL DEFAULT 0');
+    if (!preferenceInfo.some(column => column.name === 'has_letter_grades')) this.db.exec('ALTER TABLE app_preferences ADD COLUMN has_letter_grades INTEGER NOT NULL DEFAULT 0');
     const worksheetInfo = this.db.prepare('PRAGMA table_info(worksheets)').all() as Row[];
     if (!worksheetInfo.some(column => column.name === 'grade_mode')) this.db.exec("ALTER TABLE worksheets ADD COLUMN grade_mode TEXT NOT NULL DEFAULT 'NUMERIC'");
     if (!worksheetInfo.some(column => column.name === 'is_elective')) this.db.exec('ALTER TABLE worksheets ADD COLUMN is_elective INTEGER NOT NULL DEFAULT 0');
@@ -200,14 +203,14 @@ export class AppDatabase {
   getSchoolLogo() { return (this.db.prepare('SELECT school_logo FROM app_preferences WHERE id = 1').get() as Row).school_logo as string; }
   saveSchoolLogo(logo: string) { this.db.prepare('UPDATE app_preferences SET school_logo = ? WHERE id = 1').run(logo); }
   getCenterConfiguration(): CenterConfiguration {
-    const row = this.db.prepare('SELECT exam_weight, continuous_assessment_weight, final_report_grade_mode, grades_json FROM app_preferences WHERE id = 1').get() as Row;
+    const row = this.db.prepare('SELECT exam_weight, continuous_assessment_weight, final_report_grade_mode, grades_json, has_assessment_weights, has_letter_grades FROM app_preferences WHERE id = 1').get() as Row;
     const examWeight = Number(row.exam_weight); const continuousAssessmentWeight = Number(row.continuous_assessment_weight);
-    try { return normalizeCenterConfiguration({ examWeight, continuousAssessmentWeight, finalReportGradeMode: row.final_report_grade_mode === 'LETTER' ? 'LETTER' : 'NUMERIC', grades: JSON.parse(row.grades_json || '[]') }); }
+    try { return normalizeCenterConfiguration({ examWeight, continuousAssessmentWeight, finalReportGradeMode: row.final_report_grade_mode === 'LETTER' ? 'LETTER' : 'NUMERIC', grades: JSON.parse(row.grades_json || '[]'), hasAssessmentWeights: Boolean(row.has_assessment_weights), hasLetterGrades: Boolean(row.has_letter_grades) }); }
     catch { return structuredClone(DEFAULT_CENTER_CONFIGURATION); }
   }
   saveCenterConfiguration(configuration: CenterConfiguration) {
-    const { examWeight, continuousAssessmentWeight, finalReportGradeMode, grades } = normalizeCenterConfiguration(configuration);
-    this.db.prepare('UPDATE app_preferences SET exam_weight = ?, continuous_assessment_weight = ?, final_report_grade_mode = ?, grades_json = ? WHERE id = 1').run(examWeight, continuousAssessmentWeight, finalReportGradeMode, JSON.stringify(grades));
+    const { examWeight, continuousAssessmentWeight, finalReportGradeMode, grades, hasAssessmentWeights, hasLetterGrades } = normalizeCenterConfiguration(configuration);
+    this.db.prepare('UPDATE app_preferences SET exam_weight = ?, continuous_assessment_weight = ?, final_report_grade_mode = ?, grades_json = ?, has_assessment_weights = ?, has_letter_grades = ? WHERE id = 1').run(examWeight, continuousAssessmentWeight, finalReportGradeMode, JSON.stringify(grades), hasAssessmentWeights ? 1 : 0, hasLetterGrades ? 1 : 0);
     return this.getCenterConfiguration();
   }
 
@@ -219,9 +222,16 @@ export class AppDatabase {
     return observations;
   }
 
-  saveTutorObservation(reportId: number, studentId: number, observation: string) {
-    const report = this.db.prepare('SELECT course_level FROM tracking_reports WHERE id = ?').get(reportId) as Row | undefined;
+  private latestMutableReport(reportId: number) {
+    const report = this.db.prepare('SELECT id, course_level, trimester FROM tracking_reports WHERE id = ?').get(reportId) as Row | undefined;
     if (!report) throw new Error('No se ha encontrado el informe.');
+    const latest = this.latestReport(report.course_level, report.trimester);
+    if (!latest || Number(latest.id) !== reportId) throw new Error('READ_ONLY_REPORT');
+    return report;
+  }
+
+  saveTutorObservation(reportId: number, studentId: number, observation: string) {
+    const report = this.latestMutableReport(reportId);
     const student = this.db.prepare('SELECT course_level FROM students WHERE id = ?').get(studentId) as Row | undefined;
     if (!student || student.course_level !== report.course_level) throw new Error('El alumno no pertenece al curso seleccionado.');
     if (!observation.trim()) {
@@ -447,6 +457,7 @@ export class AppDatabase {
     const now = this.now();
     const gradeMode = input.gradeMode ?? 'NUMERIC';
     if (!['NUMERIC', 'LETTER'].includes(gradeMode)) throw new Error('Tipo de nota no válido.');
+    if (gradeMode === 'LETTER' && !this.getCenterConfiguration().hasLetterGrades) throw new Error('Las notas con letras no están configuradas para el centro.');
     try {
       const result = this.db.prepare('INSERT INTO worksheets(course_level, trimester, subject, grade_mode, is_elective, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
         .run(input.courseLevel, input.trimester, input.subject, gradeMode, input.isElective ? 1 : 0, now, now);
@@ -628,6 +639,7 @@ export class AppDatabase {
   setImportedWorksheetBlocking(id: number, isBlocking: boolean) {
     const row = this.db.prepare('SELECT report_id FROM imported_worksheets WHERE id = ?').get(id) as Row | undefined;
     if (!row) throw new Error('No se ha encontrado la entrega importada.');
+    this.latestMutableReport(Number(row.report_id));
     const now = this.now();
     this.db.prepare('UPDATE imported_worksheets SET is_blocking = ? WHERE id = ?').run(isBlocking ? 1 : 0, id);
     this.db.prepare('UPDATE tracking_reports SET updated_at = ? WHERE id = ?').run(now, row.report_id);
@@ -646,6 +658,7 @@ export class AppDatabase {
   deleteImportedWorksheet(id: number) {
     const row = this.db.prepare('SELECT report_id FROM imported_worksheets WHERE id = ?').get(id) as Row | undefined;
     if (!row) return;
+    this.latestMutableReport(Number(row.report_id));
     this.db.prepare('DELETE FROM imported_worksheets WHERE id = ?').run(id);
     if (!(this.db.prepare('SELECT 1 FROM imported_worksheets WHERE report_id = ?').get(row.report_id))) this.db.prepare('DELETE FROM tracking_reports WHERE id = ?').run(row.report_id);
   }
@@ -668,6 +681,10 @@ export class AppDatabase {
   }
 
   deleteTrackingReport(reportId: number) {
+    const report = this.db.prepare('SELECT course_level, trimester FROM tracking_reports WHERE id = ?').get(reportId) as Row | undefined;
+    if (!report) return;
+    const latest = this.latestReport(report.course_level, report.trimester);
+    if (!latest || Number(latest.id) !== reportId) throw new Error('ONLY_LATEST_REPORT_CAN_BE_DELETED');
     this.db.prepare('DELETE FROM tracking_reports WHERE id = ?').run(reportId);
   }
 

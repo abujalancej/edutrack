@@ -3,7 +3,7 @@ import { AppDatabase } from './database';
 import { buildExport, suggestedFilename } from '../export/export-service';
 import { buildTrackingReports } from '../export/tracking-report-service';
 import { COURSE_LABELS, COURSE_LEVELS, SUBJECTS_BY_COURSE } from '../../shared/catalogs/catalogs';
-import { DEFAULT_CENTER_CONFIGURATION } from '../../shared/center/center-configuration';
+import { DEFAULT_CENTER_CONFIGURATION, DEFAULT_GRADE_CONVERSION } from '../../shared/center/center-configuration';
 import type { FullSeguimentExport } from '../../shared/types/models';
 
 describe('AppDatabase', () => {
@@ -123,6 +123,7 @@ describe('AppDatabase', () => {
 
   it('admite notas con letras y modificadores como AN+ o AE-', () => {
     db.saveProfile({ firstName: 'Marta', lastName: 'Serra' });
+    db.saveCenterConfiguration({ ...DEFAULT_CENTER_CONFIGURATION, grades: [...DEFAULT_GRADE_CONVERSION], hasLetterGrades: true });
     const anna = db.addStudent('ESO_3', 'Anna');
     const sheet = db.createWorksheet({ courseLevel: 'ESO_3', trimester: 'T_1', subject: 'Llengua Catalana', gradeMode: 'LETTER' });
     const exam = db.addAssessment(sheet.id, 'EXAM', 'Examen', '2026-09-12').columns[0];
@@ -136,6 +137,7 @@ describe('AppDatabase', () => {
   });
 
   it('valida el catálogo de letras y permite notas numéricas en hojas con letras', () => {
+    db.saveCenterConfiguration({ ...DEFAULT_CENTER_CONFIGURATION, grades: [...DEFAULT_GRADE_CONVERSION], hasLetterGrades: true });
     const anna = db.addStudent('ESO_3', 'Anna'); const pau = db.addStudent('ESO_3', 'Pau');
     const sheet = db.createWorksheet({ courseLevel: 'ESO_3', trimester: 'T_1', subject: 'Llengua Catalana', gradeMode: 'LETTER' });
     const exam = db.addAssessment(sheet.id, 'EXAM', 'Examen', '2026-09-12').columns[0];
@@ -155,8 +157,12 @@ describe('AppDatabase', () => {
   });
 
   it('guarda la ponderación y el formato del informe desde los datos del centro', () => {
-    db.replaceCenterData([{ name: '1r ESO', subjects: ['Català'], students: ['Aina Bosch'] }], { ...DEFAULT_CENTER_CONFIGURATION, examWeight: 60, continuousAssessmentWeight: 40, finalReportGradeMode: 'LETTER' });
-    expect(db.getInitialState().centerConfiguration).toMatchObject({ examWeight: 60, continuousAssessmentWeight: 40, finalReportGradeMode: 'LETTER' });
+    db.replaceCenterData([{ name: '1r ESO', subjects: ['Català'], students: ['Aina Bosch'] }], { ...DEFAULT_CENTER_CONFIGURATION, examWeight: 60, continuousAssessmentWeight: 40, finalReportGradeMode: 'LETTER', grades: [...DEFAULT_GRADE_CONVERSION], hasAssessmentWeights: true, hasLetterGrades: true });
+    expect(db.getInitialState().centerConfiguration).toMatchObject({ examWeight: 60, continuousAssessmentWeight: 40, finalReportGradeMode: 'LETTER', hasAssessmentWeights: true, hasLetterGrades: true });
+  });
+
+  it('no permite crear hojas con letras sin una configuración explícita del centro', () => {
+    expect(() => db.createWorksheet({ courseLevel: 'ESO_3', trimester: 'T_1', subject: 'Llengua Catalana', gradeMode: 'LETTER' })).toThrow('Las notas con letras no están configuradas para el centro.');
   });
 
   it('borra los datos académicos del centro y conserva las preferencias personales', () => {
@@ -332,5 +338,17 @@ describe('AppDatabase', () => {
     expect(db.listImports(first.id).map(item => item.subject)).toEqual(['Música']);
     expect(db.listImports(second.id).map(item => item.subject)).toEqual(['Llengua Castellana', 'Música']);
     expect(db.listTutorObservations()[`${second.id}:${student.id}`]).toBe('Observación inicial');
+
+    const oldDelivery = db.listImports(first.id)[0];
+    expect(() => db.saveTutorObservation(first.id, student.id, 'No se puede editar')).toThrow('READ_ONLY_REPORT');
+    expect(() => db.setImportedWorksheetBlocking(oldDelivery.id, false)).toThrow('READ_ONLY_REPORT');
+    expect(() => db.deleteImportedWorksheet(oldDelivery.id)).toThrow('READ_ONLY_REPORT');
+    expect(() => db.deleteTrackingReport(first.id)).toThrow('ONLY_LATEST_REPORT_CAN_BE_DELETED');
+    db.deleteTrackingReport(second.id);
+    expect(db.listTrackingReports().map(report => report.sequence)).toEqual([1]);
+    db.deleteTrackingReport(first.id);
+    expect(db.listTrackingReports()).toEqual([]);
+    expect(db.listImports()).toEqual([]);
+    expect(db.listTutorObservations()).toEqual({});
   });
 });

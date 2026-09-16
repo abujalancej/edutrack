@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CENTER_CONFIGURATION, letterGradeForNumericValue } from '../center/center-configuration';
+import { DEFAULT_GRADE_CONVERSION, letterGradeForNumericValue } from '../center/center-configuration';
 import { isCompleteGradeValue, isSpecialGradeValue } from './grades';
 
 describe('grade values', () => {
@@ -14,9 +14,9 @@ describe('grade values', () => {
   });
 
   it('accepts configured letter grades case-insensitively and numeric values in letter mode', () => {
-    expect(isCompleteGradeValue('an+', 'LETTER', DEFAULT_CENTER_CONFIGURATION.grades)).toBe(true);
-    expect(isCompleteGradeValue('7,5', 'LETTER', DEFAULT_CENTER_CONFIGURATION.grades)).toBe(true);
-    expect(isCompleteGradeValue('inventada', 'LETTER', DEFAULT_CENTER_CONFIGURATION.grades)).toBe(false);
+    expect(isCompleteGradeValue('an+', 'LETTER', DEFAULT_GRADE_CONVERSION)).toBe(true);
+    expect(isCompleteGradeValue('7,5', 'LETTER', DEFAULT_GRADE_CONVERSION)).toBe(true);
+    expect(isCompleteGradeValue('inventada', 'LETTER', DEFAULT_GRADE_CONVERSION)).toBe(false);
   });
 
   it('resolves numeric grades through the configured conversion table', () => {

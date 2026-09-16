@@ -14,8 +14,13 @@ describe('catalog-parser', () => {
   });
 
   it('lee la configuración completa del centro en un solo archivo', () => {
-    expect(parseCenterFile('Curso;Asignaturas;Alumnos\n3r ESO;Llengua Catalana|Matemàtiques;Anna Pérez|Marc López', '.csv')).toMatchObject({ ok: true, courses: [{ name: '3r ESO', subjects: ['Llengua Catalana', 'Matemàtiques'], students: ['Anna Pérez', 'Marc López'] }], centerConfiguration: { examWeight: 70, continuousAssessmentWeight: 30, finalReportGradeMode: 'NUMERIC' } });
-    expect(parseCenterFile('{"assessmentWeights":{"exam":60,"continuousAssessment":40},"finalReportGradeMode":"LETTER","courses":[{"name":"3r ESO","subjects":["Llengua Catalana"],"students":["Anna","Marc"]}]}', '.json')).toMatchObject({ ok: true, centerConfiguration: { examWeight: 60, continuousAssessmentWeight: 40, finalReportGradeMode: 'LETTER' } });
+    expect(parseCenterFile('Curso;Asignaturas;Alumnos\n3r ESO;Llengua Catalana|Matemàtiques;Anna Pérez|Marc López', '.csv')).toMatchObject({ ok: true, courses: [{ name: '3r ESO', subjects: ['Llengua Catalana', 'Matemàtiques'], students: ['Anna Pérez', 'Marc López'] }], centerConfiguration: { examWeight: 70, continuousAssessmentWeight: 30, finalReportGradeMode: 'NUMERIC', hasAssessmentWeights: false, hasLetterGrades: false, grades: [] } });
+    expect(parseCenterFile('{"assessmentWeights":{"exam":60,"continuousAssessment":40},"finalReportGradeMode":"LETTER","grades":[{"grade":"NA","from":0}],"courses":[{"name":"3r ESO","subjects":["Llengua Catalana"],"students":["Anna","Marc"]}]}', '.json')).toMatchObject({ ok: true, centerConfiguration: { examWeight: 60, continuousAssessmentWeight: 40, finalReportGradeMode: 'LETTER', hasAssessmentWeights: true, hasLetterGrades: true } });
+  });
+
+  it('mantiene solo notas numéricas cuando faltan los campos opcionales', () => {
+    const result = parseCenterFile('{"courses":[{"name":"3r ESO","subjects":["Llengua Catalana"],"students":["Anna"]}]}', '.json');
+    expect(result).toMatchObject({ ok: true, centerConfiguration: { finalReportGradeMode: 'NUMERIC', grades: [], hasAssessmentWeights: false, hasLetterGrades: false } });
   });
 
   it('valida el ejemplo completo del centro con configuración', () => {

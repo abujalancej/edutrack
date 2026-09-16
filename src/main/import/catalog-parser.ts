@@ -96,13 +96,15 @@ function parseCenterJson(content: string): { courses: CenterCourseData[]; center
 
 function parseCenterConfiguration(root: Record<string, unknown> | null): CenterConfiguration {
   if (!root) return { ...DEFAULT_CENTER_CONFIGURATION };
+  const hasAssessmentWeights = object(root.assessmentWeights) || root.examWeight !== undefined || root.continuousAssessmentWeight !== undefined;
   const weights = object(root.assessmentWeights) ? root.assessmentWeights : {};
-  const examWeight = weights.exam ?? root.examWeight ?? DEFAULT_CENTER_CONFIGURATION.examWeight;
-  const continuousAssessmentWeight = weights.continuousAssessment ?? root.continuousAssessmentWeight ?? DEFAULT_CENTER_CONFIGURATION.continuousAssessmentWeight;
+  const examWeight = hasAssessmentWeights ? weights.exam ?? root.examWeight : DEFAULT_CENTER_CONFIGURATION.examWeight;
+  const continuousAssessmentWeight = hasAssessmentWeights ? weights.continuousAssessment ?? root.continuousAssessmentWeight : DEFAULT_CENTER_CONFIGURATION.continuousAssessmentWeight;
   const finalReportGradeMode = root.finalReportGradeMode ?? DEFAULT_CENTER_CONFIGURATION.finalReportGradeMode;
-  const grades = root.grades ?? DEFAULT_CENTER_CONFIGURATION.grades;
+  const hasLetterGrades = root.grades !== undefined;
+  const grades = hasLetterGrades ? root.grades : [];
   if (typeof examWeight !== 'number' || typeof continuousAssessmentWeight !== 'number' || !Array.isArray(grades)) throw new Error('La configuración del centro no es válida.');
-  return normalizeCenterConfiguration({ examWeight, continuousAssessmentWeight, finalReportGradeMode: finalReportGradeMode as CenterConfiguration['finalReportGradeMode'], grades: grades as CenterConfiguration['grades'] });
+  return normalizeCenterConfiguration({ examWeight, continuousAssessmentWeight, finalReportGradeMode: finalReportGradeMode as CenterConfiguration['finalReportGradeMode'], grades: grades as CenterConfiguration['grades'], hasAssessmentWeights, hasLetterGrades });
 }
 
 function parseCenterCsv(content: string): CenterCourseData[] {
