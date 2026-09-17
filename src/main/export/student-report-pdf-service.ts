@@ -103,12 +103,13 @@ export function buildStudentReportHtml(report: TrackingReportsExport, studentInd
     const columns = reportSubject.columns;
     const displayedName = reportSubject.name;
     const rows = reportSubject.isExcluded ? `<tr><td class="subject-no-grades" colspan="5">${escapeHtml(labels.noGrades)}</td></tr>` : columns.map(column => {
-      const grade = displayGrade(studentSubject.values[column.id] ?? '', report.centerConfiguration);
+      const notApplicable = studentSubject.applicability?.[column.id] === 'NOT_APPLICABLE';
+      const grade = notApplicable ? '' : displayGrade(studentSubject.values[column.id] ?? '', report.centerConfiguration);
       return `<tr${column.isExisting ? ' class="previous-assessment-row"' : ''}>
         <td class="assessment">${escapeHtml(column.name)}</td>
         <td>${escapeHtml(kindName(labels, column.kind))}</td>
         <td class="date">${escapeHtml(displayDate(column.assessmentDate, language))}</td>
-        <td class="grade ${gradeTone(grade, report.centerConfiguration)}">${escapeHtml(grade || '—')}</td>
+        <td class="grade ${notApplicable ? 'grade-empty' : gradeTone(grade, report.centerConfiguration)}">${escapeHtml(notApplicable ? 'N/A' : grade || '—')}</td>
         <td class="observation">${escapeHtml(studentSubject.observations[column.id]?.trim() || '—')}</td>
       </tr>`;
     }).join('');
@@ -177,14 +178,15 @@ async function availablePath(directory: string, filename: string) {
   }
 }
 
-export async function writeStudentReportPdfs(report: TrackingReportsExport, directory: string) {
+export async function writeStudentReportPdfs(report: TrackingReportsExport, directory: string, frozenHtml?: string[]) {
   if (report.students.length === 0) throw new Error('NO_STUDENTS');
+  if (frozenHtml && frozenHtml.length !== report.students.length) throw new Error('INVALID_REPORT_SNAPSHOT');
   const printWindow = new BrowserWindow({ show: false, backgroundColor: '#ffffff', webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
   let count = 0;
   const studentPdfs: Uint8Array[] = [];
   try {
     for (let index = 0; index < report.students.length; index += 1) {
-      const html = buildStudentReportHtml(report, index);
+      const html = frozenHtml?.[index] ?? buildStudentReportHtml(report, index);
       await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
       const pdf = await printWindow.webContents.printToPDF({ displayHeaderFooter: true, headerTemplate: '<div></div>', footerTemplate: pdfFooterTemplate, printBackground: true, preferCSSPageSize: true, margins: { top: 0.5, bottom: 0.55, left: 0, right: 0 } });
       studentPdfs.push(pdf);

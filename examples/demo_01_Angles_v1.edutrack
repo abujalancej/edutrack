@@ -1,0 +1,63 @@
+{
+  "format": "full-seguiment",
+  "version": 1,
+  "exportedAt": "2026-09-16T17:05:00.000Z",
+  "teacher": {
+    "firstName": "Laura",
+    "lastName": "Pons",
+    "sex": "FEMALE"
+  },
+  "course": {
+    "level": "ESO_1",
+    "name": "1r ESO"
+  },
+  "trimester": {
+    "id": "T_1",
+    "name": "1r Trimestre"
+  },
+  "subject": {
+    "name": "Anglès",
+    "gradeMode": "LETTER",
+    "isElective": false
+  },
+  "columns": [
+    {
+      "id": "col_4f585a92-0f85-4d81-b869-beb9df4223ac",
+      "name": "Reading comprehension",
+      "kind": "EXAM",
+      "assessmentDate": "2026-09-08"
+    },
+    {
+      "id": "col_983735f0-cec6-4b26-b56a-d8824f29437d",
+      "name": "Oral presentation",
+      "kind": "CONTINUOUS_ASSESSMENT",
+      "assessmentDate": "2026-09-16"
+    }
+  ],
+  "students": [
+    {
+      "name": "Aina Bosch",
+      "enabled": true,
+      "values": {
+        "col_4f585a92-0f85-4d81-b869-beb9df4223ac": "NA+",
+        "col_983735f0-cec6-4b26-b56a-d8824f29437d": "AS+"
+      },
+      "observations": {
+        "col_4f585a92-0f85-4d81-b869-beb9df4223ac": "Encara no identifica prou bé les idees principals; ha de reforçar el vocabulari i revisar les respostes abans de lliurar-les.",
+        "col_983735f0-cec6-4b26-b56a-d8824f29437d": "S’expressa amb claredat i manté el discurs; cal millorar la pronunciació d’alguns sons."
+      }
+    },
+    {
+      "name": "Biel Casas",
+      "enabled": true,
+      "values": {
+        "col_4f585a92-0f85-4d81-b869-beb9df4223ac": "AN+",
+        "col_983735f0-cec6-4b26-b56a-d8824f29437d": "AE-"
+      },
+      "observations": {
+        "col_4f585a92-0f85-4d81-b869-beb9df4223ac": "Comprèn informació explícita i implícita i utilitza el vocabulari amb precisió.",
+        "col_983735f0-cec6-4b26-b56a-d8824f29437d": "Presentació fluida, ben organitzada i amb una pronunciació molt acurada."
+      }
+    }
+  ]
+}

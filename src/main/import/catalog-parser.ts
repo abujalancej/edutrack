@@ -13,6 +13,12 @@ export function parseCenterFile(content: string, extension: string): CenterDataP
     for (const course of courses) {
       if (!course.subjects.length) return { ok: false, error: `El curso “${course.name}” no contiene asignaturas.` };
       if (!course.students.length) return { ok: false, error: `El curso “${course.name}” no contiene alumnos.` };
+      const seen = new Set<string>();
+      for (const student of course.students) {
+        const key = student.trim().toLocaleLowerCase();
+        if (!key || seen.has(key)) return { ok: false, error: `Nombre de alumno vacío o duplicado en “${course.name}”: ${student}.` };
+        seen.add(key);
+      }
     }
     return { ok: true, courses, centerConfiguration };
   } catch (error) { return { ok: false, error: message(error) }; }
@@ -89,7 +95,7 @@ function parseCenterJson(content: string): { courses: CenterCourseData[]; center
     if (!object(entry)) throw new Error(`El curso de la posición ${index + 1} no es válido.`);
     const name = entry.name ?? entry.nombre ?? entry.nom; const subjects = entry.subjects ?? entry.asignaturas ?? entry.assignatures; const students = entry.students ?? entry.alumnos ?? entry.alumnes;
     if (typeof name !== 'string' || !Array.isArray(subjects) || !Array.isArray(students)) throw new Error(`El curso de la posición ${index + 1} debe incluir nombre, asignaturas y alumnos.`);
-    return { name: name.trim(), subjects: unique(subjects.map(textEntry)), students: unique(students.map(textEntry)) };
+    return { name: name.trim(), subjects: unique(subjects.map(textEntry)), students: students.map(textEntry).map(value => value.trim()) };
   });
   return { courses, centerConfiguration: parseCenterConfiguration(root) };
 }
@@ -134,7 +140,7 @@ function parseCenterCsv(content: string): CenterCourseData[] {
     const name = (row[courseIndex] ?? '').trim(); if (!name) continue;
     const key = name.toLocaleLowerCase(); const course = grouped.get(key) ?? { name, subjects: [], students: [] };
     course.subjects = unique([...course.subjects, ...splitList(row[subjectIndex] ?? '')]);
-    course.students = unique([...course.students, ...splitList(row[studentIndex] ?? '')]);
+    course.students.push(...splitList(row[studentIndex] ?? ''));
     grouped.set(key, course);
   }
   return [...grouped.values()];

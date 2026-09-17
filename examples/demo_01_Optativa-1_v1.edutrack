@@ -1,0 +1,63 @@
+{
+  "format": "full-seguiment",
+  "version": 1,
+  "exportedAt": "2026-09-16T16:58:25.922Z",
+  "teacher": {
+    "firstName": "Marc",
+    "lastName": "Vidal",
+    "sex": "MALE"
+  },
+  "course": {
+    "level": "ESO_1",
+    "name": "1r ESO"
+  },
+  "trimester": {
+    "id": "T_1",
+    "name": "1r Trimestre"
+  },
+  "subject": {
+    "name": "Optativa 1",
+    "gradeMode": "NUMERIC",
+    "isElective": true
+  },
+  "columns": [
+    {
+      "id": "col_082b46a4-1c0b-4515-a50f-8990e62af996",
+      "name": "Projecte pràctic",
+      "kind": "CONTINUOUS_ASSESSMENT",
+      "assessmentDate": "2026-09-10"
+    },
+    {
+      "id": "col_92fd8e5c-06a9-49ae-bc5c-e9c178125150",
+      "name": "Presentació del projecte",
+      "kind": "CONTINUOUS_ASSESSMENT",
+      "assessmentDate": "2026-09-16"
+    }
+  ],
+  "students": [
+    {
+      "name": "Aina Bosch",
+      "enabled": false,
+      "values": {
+        "col_082b46a4-1c0b-4515-a50f-8990e62af996": "",
+        "col_92fd8e5c-06a9-49ae-bc5c-e9c178125150": ""
+      },
+      "observations": {
+        "col_082b46a4-1c0b-4515-a50f-8990e62af996": "",
+        "col_92fd8e5c-06a9-49ae-bc5c-e9c178125150": ""
+      }
+    },
+    {
+      "name": "Biel Casas",
+      "enabled": true,
+      "values": {
+        "col_082b46a4-1c0b-4515-a50f-8990e62af996": "4.5",
+        "col_92fd8e5c-06a9-49ae-bc5c-e9c178125150": "8"
+      },
+      "observations": {
+        "col_082b46a4-1c0b-4515-a50f-8990e62af996": "La planificació és incompleta i encara necessita ajuda per resoldre els problemes.",
+        "col_92fd8e5c-06a9-49ae-bc5c-e9c178125150": "Explica el procés amb claredat i justifica les decisions preses."
+      }
+    }
+  ]
+}

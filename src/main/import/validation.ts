@@ -8,7 +8,7 @@ const object = (value: unknown): value is Record<string, unknown> => typeof valu
 export function validateImport(value: unknown): ValidationResult {
   if (!object(value)) return invalid('El archivo no contiene un objeto JSON válido.');
   if (value.format !== 'full-seguiment') return invalid('El formato del archivo no es compatible con EduTrack.');
-  if (value.version !== 1) return invalid('La versión del archivo no es compatible.');
+  if (value.version !== 1 && value.version !== 2) return invalid('La versión del archivo no es compatible.');
   if (!object(value.course) || !isCourseLevel(value.course.level)) return invalid('El curso no pertenece al catálogo permitido.');
   if (typeof value.course.name !== 'string' || !value.course.name.trim()) return invalid('El nombre del curso no es válido.');
   if (!object(value.trimester)) return invalid('El trimestre no pertenece al catálogo permitido.');
@@ -30,9 +30,22 @@ export function validateImport(value: unknown): ValidationResult {
     columnIds.add(column.id);
   }
   if (!Array.isArray(value.students) || value.students.length === 0) return invalid('El archivo no contiene alumnos.');
+  const studentNames = new Set<string>();
   for (const student of value.students) {
     if (!object(student) || !text(student.name) || !object(student.values)) return invalid('Hay un alumno inválido.');
+    if (value.version === 2) {
+      const name = student.name.trim().toLocaleLowerCase();
+      if (studentNames.has(name)) return invalid('Hay nombres de alumnos duplicados en el archivo v2.');
+      studentNames.add(name);
+    }
     if (student.enabled !== undefined && typeof student.enabled !== 'boolean') return invalid('El estado del alumno no es válido.');
+    if (value.version === 2) {
+      if (typeof student.enrolled !== 'boolean' || !object(student.applicability)) return invalid('Falta el estado de pertenencia o aplicabilidad del alumno.');
+      if (Object.keys(student.applicability).length !== columnIds.size) return invalid('La aplicabilidad no cubre todas las evaluaciones.');
+      for (const [key, status] of Object.entries(student.applicability)) {
+        if (!columnIds.has(key) || (status !== 'APPLICABLE' && status !== 'NOT_APPLICABLE')) return invalid('Estado de aplicabilidad no válido.');
+      }
+    }
     for (const [key, cell] of Object.entries(student.values)) {
       if (!columnIds.has(key) || typeof cell !== 'string') return invalid('Hay un valor de celda inválido.');
     }

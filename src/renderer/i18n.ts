@@ -1,5 +1,5 @@
 import type { CourseLevel, Trimester } from '@shared/catalogs/catalogs';
-import type { AppLanguage, TeacherSex } from '@shared/types/models';
+import type { AppLanguage, CenterRosterChange, TeacherSex } from '@shared/types/models';
 
 export const LANGUAGE_LABELS: Record<AppLanguage, string> = { es: 'Castellano', ca: 'Català', en: 'English', eu: 'Euskara', gl: 'Galego' };
 export const LANGUAGES: AppLanguage[] = ['es', 'ca', 'en', 'eu', 'gl'];
@@ -9,6 +9,15 @@ let activeTeacherSex: TeacherSex = 'MALE';
 export const setActiveLanguage = (language: AppLanguage) => { activeLanguage = language; if (typeof document !== 'undefined') document.documentElement.lang = language; };
 export const setActiveTeacherSex = (sex?: TeacherSex) => { activeTeacherSex = sex === 'FEMALE' ? 'FEMALE' : 'MALE'; };
 export const getActiveLanguage = () => activeLanguage;
+
+const worksheetStatusLabels: Record<AppLanguage, { historical: string; notApplicable: string; ambiguousNames: string }> = {
+  es: { historical: 'Histórico', notApplicable: 'No aplicable', ambiguousNames: 'No se puede exportar: hay alumnos con el mismo nombre en este curso.' },
+  ca: { historical: 'Històric', notApplicable: 'No aplicable', ambiguousNames: 'No es pot exportar: hi ha alumnes amb el mateix nom en aquest curs.' },
+  en: { historical: 'Former student', notApplicable: 'Not applicable', ambiguousNames: 'Cannot export: students in this year have the same name.' },
+  eu: { historical: 'Ikasle ohia', notApplicable: 'Ez dagokio', ambiguousNames: 'Ezin da esportatu: maila honetako ikasle batzuek izen bera dute.' },
+  gl: { historical: 'Histórico', notApplicable: 'Non aplicable', ambiguousNames: 'Non se pode exportar: hai alumnos co mesmo nome neste curso.' }
+};
+export const worksheetStatusUi = (key: 'historical' | 'notApplicable' | 'ambiguousNames') => worksheetStatusLabels[activeLanguage][key];
 
 const copySheetTranslations = {
   copySheet:'Crear copia', copySheetTitle:'Crear copia de asignatura', copySheetHelp:'Selecciona el trimestre de destino para crear una nueva hoja con la misma estructura de evaluaciones.', targetTrimester:'Trimestre de destino', selectTrimester:'Selecciona un trimestre', copySheetWarning:'Se copiarán los exámenes y las evaluaciones continuas con sus nombres. Las fechas se borrarán y las notas y observaciones no se copiarán.', copySheetTrimesterRequired:'Debes seleccionar un trimestre de destino.', copySheetNoTrimesters:'No hay otro trimestre disponible para esta asignatura.', copySheetError:'No se ha podido crear la copia.', copySheetCreated:'Copia creada correctamente.', newStudentsWarning:'{count} alumnos nuevos', removedStudentsWarning:'{count} alumnos desaparecidos', newAssessmentsWarning:'{count} evaluaciones nuevas', cannotDeleteCopiedAssessment:'No se puede eliminar una evaluación heredada de la copia anterior.'
@@ -303,9 +312,30 @@ const helpWorkflowOverrides: Record<AppLanguage, Partial<Record<Key, string>>> =
   }
 };
 
+const safeCenterImportWarnings: Record<AppLanguage, string> = {
+  es: 'Se añadirán los cursos y las asignaturas nuevos sin borrar los existentes. Si cambia el listado de alumnos de un curso, no se importará nada. ¿Quieres continuar?',
+  ca: 'S’afegiran els cursos i les assignatures nous sense esborrar els existents. Si canvia la llista d’alumnes d’un curs, no s’importarà res. Vols continuar?',
+  en: 'New years and subjects will be added without deleting existing ones. If a year’s student list changes, nothing will be imported. Continue?',
+  eu: 'Maila eta irakasgai berriak gehituko dira, lehendik daudenak ezabatu gabe. Maila bateko ikasleen zerrenda aldatzen bada, ez da ezer inportatuko. Jarraitu?',
+  gl: 'Engadiranse os cursos e as materias novas sen borrar os existentes. Se cambia a lista de alumnos dun curso, non se importará nada. Queres continuar?'
+};
+
+const rosterChangeLabels: Record<AppLanguage, { title: string; added: string; removed: string; none: string }> = {
+  es: { title: 'La importación se ha cancelado porque ha cambiado el listado de alumnos', added: 'altas', removed: 'bajas', none: 'ninguna' },
+  ca: { title: 'S’ha cancel·lat la importació perquè ha canviat la llista d’alumnes', added: 'altes', removed: 'baixes', none: 'cap' },
+  en: { title: 'Import cancelled because the student list has changed', added: 'added', removed: 'removed', none: 'none' },
+  eu: { title: 'Inportazioa bertan behera utzi da ikasleen zerrenda aldatu delako', added: 'gehituak', removed: 'kenduak', none: 'bat ere ez' },
+  gl: { title: 'Cancelouse a importación porque cambiou a lista do alumnado', added: 'altas', removed: 'baixas', none: 'ningunha' }
+};
+
+export function centerRosterChangeMessage(changes: CenterRosterChange[]): string {
+  const labels = rosterChangeLabels[activeLanguage];
+  return `${labels.title}: ${changes.map(change => `${change.course} — ${labels.added}: ${change.added.join(', ') || labels.none}; ${labels.removed}: ${change.removed.join(', ') || labels.none}`).join(' | ')}`;
+}
+
 export function tr(key: Key, vars: Record<string,string|number> = {}) {
   const translationKey = key as TranslationKey;
-  const template = key === 'tutorComments' ? tutorCommentOverrides[activeLanguage] : genderedTerminologyOverrides[activeLanguage]?.[activeTeacherSex]?.[key] ?? trackingDocumentOverrides[activeLanguage]?.[key] ?? titleCasingOverrides[activeLanguage]?.[key] ?? helpWorkflowOverrides[activeLanguage]?.[key] ?? roleHelpOverrides[activeLanguage]?.[key] ?? subjectTerminologyOverrides[activeLanguage]?.[key] ?? genderedRoleOverrides[activeLanguage]?.[activeTeacherSex]?.[key] ?? profileSexOverrides[activeLanguage]?.[key] ?? deleteDialogOverrides[activeLanguage]?.[key] ?? electiveOverrides[activeLanguage]?.[key] ?? commonActionOverrides[activeLanguage]?.[key] ?? reportLibraryOverrides[activeLanguage]?.[key] ?? trackingStatusOverrides[activeLanguage]?.[key] ?? teacherSummaryOverrides[activeLanguage]?.[key] ?? dashboardMetricOverrides[activeLanguage]?.[key] ?? centerDataActionOverrides[activeLanguage]?.[key] ?? unifiedConfigurationOverrides[activeLanguage]?.[key] ?? completionOverrides[activeLanguage]?.[key] ?? configurationStatusOverrides[activeLanguage]?.[key] ?? terminologyOverrides[activeLanguage]?.[key] ?? onboardingOverrides[activeLanguage]?.[key] ?? gradeHelpOverrides[activeLanguage]?.[key] ?? focusedOverrides[activeLanguage]?.[key] ?? missingUiTranslations[activeLanguage]?.[translationKey] ?? (activeLanguage === 'es' ? es[translationKey] : translations[activeLanguage][translationKey]);
+  const template = key === 'tutorComments' ? tutorCommentOverrides[activeLanguage] : key === 'replaceCenterDataWarning' ? safeCenterImportWarnings[activeLanguage] : genderedTerminologyOverrides[activeLanguage]?.[activeTeacherSex]?.[key] ?? trackingDocumentOverrides[activeLanguage]?.[key] ?? titleCasingOverrides[activeLanguage]?.[key] ?? helpWorkflowOverrides[activeLanguage]?.[key] ?? roleHelpOverrides[activeLanguage]?.[key] ?? subjectTerminologyOverrides[activeLanguage]?.[key] ?? genderedRoleOverrides[activeLanguage]?.[activeTeacherSex]?.[key] ?? profileSexOverrides[activeLanguage]?.[key] ?? deleteDialogOverrides[activeLanguage]?.[key] ?? electiveOverrides[activeLanguage]?.[key] ?? commonActionOverrides[activeLanguage]?.[key] ?? reportLibraryOverrides[activeLanguage]?.[key] ?? trackingStatusOverrides[activeLanguage]?.[key] ?? teacherSummaryOverrides[activeLanguage]?.[key] ?? dashboardMetricOverrides[activeLanguage]?.[key] ?? centerDataActionOverrides[activeLanguage]?.[key] ?? unifiedConfigurationOverrides[activeLanguage]?.[key] ?? completionOverrides[activeLanguage]?.[key] ?? configurationStatusOverrides[activeLanguage]?.[key] ?? terminologyOverrides[activeLanguage]?.[key] ?? onboardingOverrides[activeLanguage]?.[key] ?? gradeHelpOverrides[activeLanguage]?.[key] ?? focusedOverrides[activeLanguage]?.[key] ?? missingUiTranslations[activeLanguage]?.[translationKey] ?? (activeLanguage === 'es' ? es[translationKey] : translations[activeLanguage][translationKey]);
   let value = Object.entries(vars).reduce((current,[name,replacement]) => current.replaceAll(`{${name}}`,String(replacement)), template);
   // A few workflow/help sentences are shared by languages and contain the
   // role noun inline. Adapt those occurrences as well as standalone labels.
@@ -326,7 +356,37 @@ const importErrorDetails: Record<Exclude<AppLanguage, 'es'>, Record<'extension' 
   gl: { extension:'O ficheiro non ten a extensión correcta.', json:'O ficheiro non contén un JSON válido.', format:'O formato ou a versión do ficheiro non é compatible.', roster:'A lista de alumnos non coincide coa lista oficial do curso.', grades:'O ficheiro contén notas que non admite a configuración do centro.', missingSubject:'O curso ou a materia do ficheiro non están configurados neste centro.' }
 };
 
+export const deliveryRosterInstruction: Record<AppLanguage, string> = {
+  es: 'Entrega desactualizada: actualiza el listado y reexporta',
+  ca: 'Lliurament desactualitzat: actualitza la llista i torna a exportar',
+  en: 'Outdated submission: update the roster and export again',
+  eu: 'Bidalketa zaharkitua: eguneratu zerrenda eta esportatu berriro',
+  gl: 'Entrega desactualizada: actualiza a lista e volve exportar'
+};
+export const centerUpdateText: Record<AppLanguage, {
+  title: string; explanation: string; existingCourse: string; newCourse: string; addedSubjects: string; omittedSubjects: string;
+  unchangedStudents: string; addedStudents: string; removedStudents: string; possibleRenames: string; renameChoice: string; newPerson: string;
+  unresolved: string; effectiveDate: string; preservation: string; omittedCourses: string; configurationChanged: string;
+  configurationBlocked: string; noChanges: string; confirm: string; cancel: string; duplicateAssignment: string;
+}> = {
+  es: { title: 'Vista previa de la actualización del centro', explanation: 'Revisa las diferencias antes de aplicar ningún cambio.', existingCourse: 'Curso existente', newCourse: 'Curso nuevo', addedSubjects: 'Asignaturas añadidas', omittedSubjects: 'Asignaturas ausentes que se conservarán', unchangedStudents: 'Alumnado sin cambios', addedStudents: 'Altas', removedStudents: 'Bajas', possibleRenames: 'Posibles cambios de nombre por resolver', renameChoice: '¿Es un cambio de nombre?', newPerson: 'Persona nueva', unresolved: 'Selecciona una correspondencia o confirma que es una persona nueva.', effectiveDate: 'Fecha efectiva de los cambios de alumnado', preservation: 'Las hojas, las notas, las entregas y los informes anteriores no se borrarán.', omittedCourses: 'Cursos ausentes que se conservarán', configurationChanged: 'Se actualizará la configuración de notas.', configurationBlocked: 'La configuración de notas no puede cambiar mientras haya informes sin instantánea.', noChanges: 'Sin cambios', confirm: 'Aplicar actualización', cancel: 'Cancelar', duplicateAssignment: 'Un alumno anterior no puede corresponder a dos altas.' },
+  ca: { title: 'Vista prèvia de l’actualització del centre', explanation: 'Revisa les diferències abans d’aplicar cap canvi.', existingCourse: 'Curs existent', newCourse: 'Curs nou', addedSubjects: 'Assignatures afegides', omittedSubjects: 'Assignatures absents que es conservaran', unchangedStudents: 'Alumnat sense canvis', addedStudents: 'Altes', removedStudents: 'Baixes', possibleRenames: 'Possibles canvis de nom pendents de resoldre', renameChoice: 'És un canvi de nom?', newPerson: 'Persona nova', unresolved: 'Selecciona una correspondència o confirma que és una persona nova.', effectiveDate: 'Data efectiva dels canvis d’alumnat', preservation: 'No s’esborraran els fulls, les notes, els lliuraments ni els informes anteriors.', omittedCourses: 'Cursos absents que es conservaran', configurationChanged: 'S’actualitzarà la configuració de notes.', configurationBlocked: 'La configuració de notes no pot canviar mentre hi hagi informes sense instantània.', noChanges: 'Sense canvis', confirm: 'Aplica l’actualització', cancel: 'Cancel·la', duplicateAssignment: 'Un alumne anterior no pot correspondre a dues altes.' },
+  en: { title: 'Preview school update', explanation: 'Review the differences before applying any changes.', existingCourse: 'Existing year', newCourse: 'New year', addedSubjects: 'Subjects to add', omittedSubjects: 'Missing subjects that will be kept', unchangedStudents: 'Unchanged students', addedStudents: 'Arrivals', removedStudents: 'Departures', possibleRenames: 'Possible name changes to resolve', renameChoice: 'Is this a name change?', newPerson: 'New person', unresolved: 'Select a match or confirm this is a new person.', effectiveDate: 'Effective date of student changes', preservation: 'Earlier sheets, grades, submissions and reports will not be deleted.', omittedCourses: 'Missing years that will be kept', configurationChanged: 'The grade configuration will be updated.', configurationBlocked: 'Grade configuration cannot change while reports without snapshots exist.', noChanges: 'No changes', confirm: 'Apply update', cancel: 'Cancel', duplicateAssignment: 'One previous student cannot match two arrivals.' },
+  eu: { title: 'Ikastetxearen eguneraketaren aurrebista', explanation: 'Berrikusi aldaketak ezer aplikatu aurretik.', existingCourse: 'Dagoen maila', newCourse: 'Maila berria', addedSubjects: 'Gehituko diren irakasgaiak', omittedSubjects: 'Fitxategian ez dauden baina mantenduko diren irakasgaiak', unchangedStudents: 'Aldatu gabeko ikasleak', addedStudents: 'Altak', removedStudents: 'Bajak', possibleRenames: 'Ebatzi beharreko izen-aldaketa posibleak', renameChoice: 'Izen-aldaketa da?', newPerson: 'Pertsona berria', unresolved: 'Hautatu bat datorren ikaslea edo baieztatu pertsona berria dela.', effectiveDate: 'Ikasleen aldaketen eragin-data', preservation: 'Aurreko orriak, notak, bidalketak eta txostenak ez dira ezabatuko.', omittedCourses: 'Fitxategian ez dauden baina mantenduko diren mailak', configurationChanged: 'Noten konfigurazioa eguneratuko da.', configurationBlocked: 'Ezin da noten konfigurazioa aldatu instantaniarik gabeko txostenak dauden bitartean.', noChanges: 'Aldaketarik ez', confirm: 'Aplikatu eguneraketa', cancel: 'Utzi', duplicateAssignment: 'Aurreko ikasle bat ezin da bi altarekin lotu.' },
+  gl: { title: 'Vista previa da actualización do centro', explanation: 'Revisa as diferenzas antes de aplicar ningún cambio.', existingCourse: 'Curso existente', newCourse: 'Curso novo', addedSubjects: 'Materias que se engadirán', omittedSubjects: 'Materias ausentes que se conservarán', unchangedStudents: 'Alumnado sen cambios', addedStudents: 'Altas', removedStudents: 'Baixas', possibleRenames: 'Posibles cambios de nome por resolver', renameChoice: 'É un cambio de nome?', newPerson: 'Persoa nova', unresolved: 'Selecciona unha correspondencia ou confirma que é unha persoa nova.', effectiveDate: 'Data efectiva dos cambios do alumnado', preservation: 'Non se borrarán as follas, as notas, as entregas nin os informes anteriores.', omittedCourses: 'Cursos ausentes que se conservarán', configurationChanged: 'Actualizarase a configuración das notas.', configurationBlocked: 'A configuración das notas non pode cambiar mentres haxa informes sen instantánea.', noChanges: 'Sen cambios', confirm: 'Aplicar actualización', cancel: 'Cancelar', duplicateAssignment: 'Un alumno anterior non pode corresponder a dúas altas.' }
+};
+const issuedReportInstruction: Record<AppLanguage, string> = {
+  es: 'El informe ya está emitido. Cópialo antes de importar nuevas entregas.',
+  ca: 'L’informe ja està emès. Copia’l abans d’importar nous lliuraments.',
+  en: 'This report has been issued. Copy it before importing new submissions.',
+  eu: 'Txostena dagoeneko jaulki da. Kopiatu bidalketa berriak inportatu aurretik.',
+  gl: 'O informe xa foi emitido. Cópiao antes de importar novas entregas.'
+};
+
 export function localizedError(message: string | undefined, fallbackKey: Key) {
+  if (message?.startsWith('El listado de la entrega no coincide')) return deliveryRosterInstruction[activeLanguage];
+  if (message?.startsWith('El listado ha cambiado. Actualiza y reexporta')) return deliveryRosterInstruction[activeLanguage];
+  if (message?.startsWith('El informe ya está emitido')) return issuedReportInstruction[activeLanguage];
   if (!message || activeLanguage === 'es') return message ?? tr(fallbackKey);
   const details = importErrorDetails[activeLanguage];
   if (/extensi[oó]n|\.edutrack$|\.csv o \.json/.test(message)) return details.extension;

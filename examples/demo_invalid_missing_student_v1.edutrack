@@ -1,0 +1,51 @@
+{
+  "format": "full-seguiment",
+  "version": 1,
+  "exportedAt": "2026-09-16T17:20:00.000Z",
+  "teacher": {
+    "firstName": "Adrián",
+    "lastName": "Bujalance",
+    "sex": "MALE"
+  },
+  "course": {
+    "level": "ESO_1",
+    "name": "1r ESO"
+  },
+  "trimester": {
+    "id": "T_1",
+    "name": "1r Trimestre"
+  },
+  "subject": {
+    "name": "Català",
+    "gradeMode": "LETTER",
+    "isElective": false
+  },
+  "columns": [
+    {
+      "id": "col_wrong_missing_lectora",
+      "name": "Comprensió lectora",
+      "kind": "EXAM",
+      "assessmentDate": "2026-09-07"
+    },
+    {
+      "id": "col_wrong_missing_escrita",
+      "name": "Expressió escrita",
+      "kind": "CONTINUOUS_ASSESSMENT",
+      "assessmentDate": "2026-09-15"
+    }
+  ],
+  "students": [
+    {
+      "name": "Aina Bosch",
+      "enabled": true,
+      "values": {
+        "col_wrong_missing_lectora": "NA+",
+        "col_wrong_missing_escrita": "AS"
+      },
+      "observations": {
+        "col_wrong_missing_lectora": "Té dificultats per identificar la idea principal i justificar les respostes amb informació del text.",
+        "col_wrong_missing_escrita": "El text és coherent; cal revisar l’accentuació i la puntuació."
+      }
+    }
+  ]
+}

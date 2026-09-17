@@ -53,7 +53,7 @@ describe('AppDatabase', () => {
     const activity = db.addAssessment(source.id, 'CONTINUOUS_ASSESSMENT', 'Comentari', '2026-09-13').columns[1];
     db.saveCell(source.id, student.id, exam.id, 'grade', '8');
     db.saveCell(source.id, student.id, activity.id, 'observation', 'Correcte');
-    db.replaceCourseRoster('ESO_1', ['Anna Pérez', 'Marc López']);
+    db.addStudent('ESO_1', 'Marc López');
 
     const copy = db.copyWorksheet(source.id, 'T_2');
     const detail = db.getWorksheet(copy.id);
@@ -69,7 +69,7 @@ describe('AppDatabase', () => {
     db.updateAssessment(detail.columns[0].id, { kind: detail.columns[0].kind, name: detail.columns[0].name, assessmentDate: '2026-10-01' });
     db.updateAssessment(detail.columns[1].id, { kind: detail.columns[1].kind, name: detail.columns[1].name, assessmentDate: '2026-10-02' });
     expect(db.listWorksheets().find(sheet => sheet.id === copy.id)?.isComplete).toBe(true);
-    expect(db.listWorksheets().find(sheet => sheet.id === copy.id)?.changeSummary).toEqual({ addedStudents: ['Marc López'], removedStudents: ['Pau Soler'], addedAssessments: [] });
+    expect(db.listWorksheets().find(sheet => sheet.id === copy.id)?.changeSummary).toEqual({ addedStudents: ['Marc López'], removedStudents: [], addedAssessments: [] });
     const newAssessment = db.addAssessment(copy.id, 'EXAM', 'Examen 2', '2026-10-01').columns.at(-1)!;
     expect(db.listWorksheets().find(sheet => sheet.id === copy.id)?.changeSummary?.addedAssessments).toEqual(['Examen 2']);
     expect(() => db.deleteColumn(detail.columns[0].id)).toThrow('COPIED_ASSESSMENT_CANNOT_BE_DELETED');
@@ -85,6 +85,7 @@ describe('AppDatabase', () => {
     db.saveCell(sheet.id, pau.id, assessment.id, 'grade', '7');
     const output = buildExport(db, sheet.id);
     expect(output.format).toBe('full-seguiment');
+    expect(output.version).toBe(1);
     expect(output.students[0]).toEqual({ name: 'Pau Soler', enabled: true, values: { [assessment.exportId]: '7' }, observations: { [assessment.exportId]: '' } });
     expect(JSON.stringify(output)).not.toContain('worksheetId');
     expect(suggestedFilename(output)).toBe(`ESO1_T1_Musica_${output.exportedAt.slice(0, 10).replaceAll('-', '')}.edutrack`);
@@ -161,18 +162,17 @@ describe('AppDatabase', () => {
     expect(output.students.find(student => student.name === laia.fullName)?.enabled).toBe(false);
   });
 
-  it('sustituye una lista importada conservando datos de nombres coincidentes', () => {
+  it('rechaza sustituir una lista importada si se perderían datos', () => {
     const anna = db.addStudent('ESO_2', 'Anna Pérez');
     const removed = db.addStudent('ESO_2', 'Marc López');
     const sheet = db.createWorksheet({ courseLevel: 'ESO_2', trimester: 'T_1', subject: 'Matemàtiques' });
     const column = db.addAssessment(sheet.id, 'EXAM', 'Examen', '2026-09-12').columns[0];
     db.saveCell(sheet.id, anna.id, column.id, 'grade', '8');
     db.saveCell(sheet.id, removed.id, column.id, 'grade', '5');
-    const next = db.replaceCourseRoster('ESO_2', ['Anna Pérez', 'Laia García']);
-    expect(next.map(student => student.fullName)).toEqual(['Anna Pérez', 'Laia García']);
-    expect(next[0].id).toBe(anna.id);
+    expect(() => db.replaceCourseRoster('ESO_2', ['Anna Pérez', 'Laia García'])).toThrow(/Marc López.*Laia García|Laia García.*Marc López/);
+    expect(db.listStudents('ESO_2').map(student => student.id)).toEqual([anna.id, removed.id]);
     expect(db.getWorksheet(sheet.id).values[`${anna.id}:${column.id}`]).toBe('8');
-    expect(db.getWorksheet(sheet.id).values[`${removed.id}:${column.id}`]).toBeUndefined();
+    expect(db.getWorksheet(sheet.id).values[`${removed.id}:${column.id}`]).toBe('5');
   });
 
   it('marca una hoja completa solo cuando todos tienen nota en todas las evaluaciones', () => {
@@ -218,9 +218,11 @@ describe('AppDatabase', () => {
     expect(db.listWorksheets().find(item => item.id === sheet.id)?.isComplete).toBe(false);
   });
 
-  it('permite sustituir los catálogos por los propios del centro', () => {
-    expect(db.replaceCourses(['Infantil 5 anys', '1r Batxillerat']).map(course => course.name)).toEqual(['Infantil 5 anys', '1r Batxillerat']);
-    expect(db.replaceSubjectCatalog([{ course: '1r Batxillerat', subject: 'Literatura universal' }]).map(subject => subject.name)).toEqual(['Literatura universal']);
+  it('añade catálogos propios sin eliminar los ya configurados', () => {
+    const courses = db.replaceCourses(['Infantil 5 anys', '1r Batxillerat']);
+    expect(courses.map(course => course.name)).toEqual(expect.arrayContaining(['1r ESO', 'Infantil 5 anys', '1r Batxillerat']));
+    const subjects = db.replaceSubjectCatalog([{ course: '1r Batxillerat', subject: 'Literatura universal' }]);
+    expect(subjects.map(subject => subject.name)).toEqual(expect.arrayContaining(['Música', 'Literatura universal']));
     db.saveSchoolLogo('data:image/png;base64,abc');
     expect(db.getInitialState().schoolLogo).toBe('data:image/png;base64,abc');
   });
@@ -284,6 +286,7 @@ describe('AppDatabase', () => {
   });
 
   it('elimina únicamente la entrega importada seleccionada', () => {
+    db.addStudent('ESO_1', 'Pau Soler');
     const delivery: FullSeguimentExport = {
       format: 'full-seguiment', version: 1, exportedAt: '2026-09-13T10:00:00.000Z',
       teacher: { firstName: 'Marta', lastName: 'Serra' },
@@ -369,6 +372,7 @@ describe('AppDatabase', () => {
   });
 
   it('solo cuenta como calificado el alumnado optativo con nota en todas las evaluaciones', () => {
+    for (const name of ['Anna', 'Pau', 'Marc']) db.addStudent('ESO_1', name);
     db.saveCenterConfiguration({ ...DEFAULT_CENTER_CONFIGURATION, notEvaluatedValue: 'NP' });
     const delivery: FullSeguimentExport = {
       format: 'full-seguiment', version: 1, exportedAt: '2026-09-13T10:00:00.000Z',

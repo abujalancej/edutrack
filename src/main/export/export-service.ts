@@ -1,19 +1,25 @@
 import { TRIMESTER_LABELS, isCourseLevel, isTrimester } from '../../shared/catalogs/catalogs';
-import { isCompleteGradeValue } from '../../shared/grades/grades';
 import type { FullSeguimentExport } from '../../shared/types/models';
 import type { AppDatabase } from '../database/database';
 
 export function buildExport(db: AppDatabase, worksheetId: number): FullSeguimentExport {
   const worksheet = db.getWorksheet(worksheetId);
   const teacher = db.getProfile();
-  const centerConfiguration = db.getCenterConfiguration();
   if (!isCourseLevel(worksheet.courseLevel) || !isTrimester(worksheet.trimester) || !db.hasCourse(worksheet.courseLevel) || !db.hasSubject(worksheet.courseLevel, worksheet.subject)) throw new Error('INVALID_WORKSHEET');
   if (!teacher.firstName || !teacher.lastName || !teacher.sex) throw new Error('PROFILE_REQUIRED');
   const enabledStudents = worksheet.students.filter(student => !worksheet.disabledStudentIds.includes(student.id));
   if (enabledStudents.length === 0) throw new Error('STUDENTS_REQUIRED');
-  if (worksheet.columns.length === 0 || enabledStudents.some(student => worksheet.columns.some(column => !isCompleteGradeValue(worksheet.values[`${student.id}:${column.id}`] ?? '', worksheet.gradeMode, centerConfiguration.grades, centerConfiguration.notEvaluatedValue)))) throw new Error('INCOMPLETE_WORKSHEET');
+  if (!worksheet.isComplete) throw new Error('INCOMPLETE_WORKSHEET');
+  const names = new Set<string>();
+  for (const student of worksheet.students) {
+    const name = student.fullName.toLocaleLowerCase();
+    if (names.has(name)) throw new Error('AMBIGUOUS_STUDENT_NAMES');
+    names.add(name);
+  }
+  const version = worksheet.students.some(student => db.listStudentEnrollments(student.id).some(period => period.startedOn !== null) || !worksheet.activeStudentIds.includes(student.id))
+    || enabledStudents.some(student => worksheet.columns.some(column => worksheet.applicability[`${student.id}:${column.id}`] === 'NOT_APPLICABLE')) ? 2 : 1;
   return {
-    format: 'full-seguiment', version: 1, exportedAt: new Date().toISOString(), teacher,
+    format: 'full-seguiment', version, exportedAt: new Date().toISOString(), teacher,
     course: { level: worksheet.courseLevel, name: db.courseName(worksheet.courseLevel) },
     trimester: { id: worksheet.trimester, name: TRIMESTER_LABELS[worksheet.trimester] },
     subject: { name: worksheet.subject, gradeMode: worksheet.gradeMode, isElective: worksheet.isElective },
@@ -21,6 +27,10 @@ export function buildExport(db: AppDatabase, worksheetId: number): FullSeguiment
     students: worksheet.students.map(student => ({
       name: student.fullName,
       enabled: !worksheet.disabledStudentIds.includes(student.id),
+      ...(version === 2 ? {
+        enrolled: worksheet.activeStudentIds.includes(student.id),
+        applicability: Object.fromEntries(worksheet.columns.map(column => [column.exportId, worksheet.applicability[`${student.id}:${column.id}`] as 'APPLICABLE' | 'NOT_APPLICABLE']))
+      } : {}),
       values: Object.fromEntries(worksheet.columns.map(column => [column.exportId, worksheet.values[`${student.id}:${column.id}`] ?? ''])),
       observations: Object.fromEntries(worksheet.columns.map(column => [column.exportId, worksheet.observations[`${student.id}:${column.id}`] ?? '']))
     }))

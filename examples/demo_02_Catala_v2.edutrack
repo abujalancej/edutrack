@@ -1,0 +1,19 @@
+{
+  "format": "full-seguiment",
+  "version": 2,
+  "exportedAt": "2026-09-17T06:00:00.000Z",
+  "teacher": { "firstName": "Adrián", "lastName": "Bujalance", "sex": "MALE" },
+  "course": { "level": "ESO_1", "name": "1r ESO" },
+  "trimester": { "id": "T_1", "name": "1r Trimestre" },
+  "subject": { "name": "Català", "gradeMode": "LETTER", "isElective": false },
+  "columns": [
+    { "id": "col_65783041-0d5d-406a-8cb0-235bfa925cda", "name": "Comprensió lectora", "kind": "EXAM", "assessmentDate": "2026-09-07" },
+    { "id": "col_0de4b125-ada7-4ac1-9465-3715d3a36a3b", "name": "Expressió escrita", "kind": "CONTINUOUS_ASSESSMENT", "assessmentDate": "2026-09-15" },
+    { "id": "demo-catala-17", "name": "Lectura compartida", "kind": "CONTINUOUS_ASSESSMENT", "assessmentDate": "2026-09-17" }
+  ],
+  "students": [
+    { "name": "Aina Bosch", "enabled": true, "enrolled": true, "values": { "col_65783041-0d5d-406a-8cb0-235bfa925cda": "NA+", "col_0de4b125-ada7-4ac1-9465-3715d3a36a3b": "AS", "demo-catala-17": "AS" }, "observations": { "demo-catala-17": "Participa amb interès." }, "applicability": { "col_65783041-0d5d-406a-8cb0-235bfa925cda": "APPLICABLE", "col_0de4b125-ada7-4ac1-9465-3715d3a36a3b": "APPLICABLE", "demo-catala-17": "APPLICABLE" } },
+    { "name": "Biel Casas", "enabled": true, "enrolled": true, "values": { "col_65783041-0d5d-406a-8cb0-235bfa925cda": "AN", "col_0de4b125-ada7-4ac1-9465-3715d3a36a3b": "AN+", "demo-catala-17": "AN" }, "observations": { "demo-catala-17": "Llegeix amb fluïdesa." }, "applicability": { "col_65783041-0d5d-406a-8cb0-235bfa925cda": "APPLICABLE", "col_0de4b125-ada7-4ac1-9465-3715d3a36a3b": "APPLICABLE", "demo-catala-17": "APPLICABLE" } },
+    { "name": "Carla Costa", "enabled": true, "enrolled": true, "values": { "col_65783041-0d5d-406a-8cb0-235bfa925cda": "", "col_0de4b125-ada7-4ac1-9465-3715d3a36a3b": "", "demo-catala-17": "AS" }, "observations": { "demo-catala-17": "S'incorpora a la lectura del grup." }, "applicability": { "col_65783041-0d5d-406a-8cb0-235bfa925cda": "NOT_APPLICABLE", "col_0de4b125-ada7-4ac1-9465-3715d3a36a3b": "NOT_APPLICABLE", "demo-catala-17": "APPLICABLE" } }
+  ]
+}

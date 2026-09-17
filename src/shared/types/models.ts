@@ -1,4 +1,5 @@
 import type { CourseLevel, Trimester } from '../catalogs/catalogs';
+import type { AssessmentApplicability } from '../assessment/applicability';
 
 export type AppMode = 'teacher' | 'tutor';
 export type AppLanguage = 'es' | 'ca' | 'en' | 'eu' | 'gl';
@@ -20,20 +21,39 @@ export interface TeacherProfile { firstName: string; lastName: string; sex?: Tea
 export interface ConfiguredCourse { id: CourseLevel; name: string; sortOrder: number }
 export interface ConfiguredSubject { courseId: CourseLevel; name: string; sortOrder: number }
 export interface Student { id: number; courseLevel: CourseLevel; fullName: string; sortOrder: number }
+export interface CenterRosterChange { course: string; added: string[]; removed: string[] }
+export interface RosterStudentReference { id: number; name: string }
+export interface CourseRosterAnalysis {
+  courseId: CourseLevel; courseName: string; status: 'unchanged' | 'changed';
+  unchanged: RosterStudentReference[]; added: string[]; removed: RosterStudentReference[];
+  possibleNameChanges: { existing: RosterStudentReference[]; incoming: string[] } | null;
+  ambiguousMatches: Array<{ name: string; candidates: RosterStudentReference[] }>;
+}
+export interface CenterRosterAnalysis { revision: string; courses: CourseRosterAnalysis[] }
+export interface RosterAssignment { courseId: CourseLevel; incomingName: string; studentId: number | null }
+export interface CenterUpdateCoursePreview extends CourseRosterAnalysis {
+  isNew: boolean; addedSubjects: string[]; retainedSubjects: string[]; omittedSubjects: string[]; historicalStudents: RosterStudentReference[];
+}
+export interface CenterUpdatePreview {
+  revision: string; courses: CenterUpdateCoursePreview[]; omittedCourses: string[];
+  rosterChanged: boolean; configurationChanged: boolean; configurationBlocked: boolean;
+}
 export interface WorksheetChangeSummary { addedStudents: string[]; removedStudents: string[]; addedAssessments: string[] }
 export interface WorksheetSummary { id: number; courseLevel: CourseLevel; trimester: Trimester; subject: string; gradeMode: GradeMode; isElective: boolean; createdAt: string; updatedAt: string; isComplete: boolean; examCount: number; continuousAssessmentCount: number; copiedFromId?: number; changeSummary?: WorksheetChangeSummary }
 export interface WorksheetColumn { id: number; worksheetId: number; exportId: string; name: string; kind: AssessmentKind; assessmentDate: string; sortOrder: number; sourceColumnId?: number }
 export interface WorksheetDetail extends WorksheetSummary {
   students: Student[];
+  activeStudentIds: number[];
   columns: WorksheetColumn[];
   values: Record<string, string>;
   observations: Record<string, string>;
+  applicability: Record<string, AssessmentApplicability>;
   disabledStudentIds: number[];
 }
 export interface ExportColumn { id: string; name: string; kind?: AssessmentKind; assessmentDate?: string; isExisting?: boolean }
-export interface ExportStudent { name: string; enabled?: boolean; values: Record<string, string>; observations?: Record<string, string> }
+export interface ExportStudent { name: string; enabled?: boolean; enrolled?: boolean; values: Record<string, string>; observations?: Record<string, string>; applicability?: Record<string, Exclude<AssessmentApplicability, 'UNRESOLVED'>> }
 export interface FullSeguimentExport {
-  format: 'full-seguiment'; version: 1; exportedAt: string;
+  format: 'full-seguiment'; version: 1 | 2; exportedAt: string;
   teacher: TeacherProfile;
   course: { level: CourseLevel; name: string };
   trimester: { id: Trimester; name: string };
@@ -43,11 +63,12 @@ export interface FullSeguimentExport {
 }
 export interface TrackingReportSummary {
   id: number; courseLevel: CourseLevel; trimester: Trimester; sequence: number; createdAt: string; updatedAt: string;
+  snapshotOrigin?: 'issued' | 'reconstructed';
 }
 export interface ImportedWorksheetSummary {
   id: number; reportId: number; courseLevel: CourseLevel; trimester: Trimester; subject: string;
   teacherFirstName: string; teacherLastName: string; exportedAt: string; importedAt: string; isElective: boolean; enabledStudentNames: string[];
-  gradedStudentNames: string[]; isBlocking: boolean;
+  gradedStudentNames: string[]; isBlocking: boolean; isStale: boolean;
 }
 export interface ImportedWorksheetDetail extends ImportedWorksheetSummary { payload: FullSeguimentExport }
 export interface TrackingReportsExport {
@@ -62,7 +83,7 @@ export interface TrackingReportsExport {
   }>;
   students: Array<{
     name: string; tutorObservation: string;
-    subjects: Array<{ name: string; values: Record<string, string>; observations: Record<string, string> }>;
+    subjects: Array<{ name: string; values: Record<string, string>; observations: Record<string, string>; applicability?: Record<string, 'APPLICABLE' | 'NOT_APPLICABLE'> }>;
   }>;
 }
 export interface InitialState {

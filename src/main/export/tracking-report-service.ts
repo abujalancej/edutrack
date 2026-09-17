@@ -16,7 +16,9 @@ const markExistingColumns = (columns: ExportColumn[], previousColumns: ExportCol
   });
 };
 
-export function buildTrackingReports(db: AppDatabase, reportId: number): TrackingReportsExport {
+export function buildTrackingReports(db: AppDatabase, reportId: number, reconstruct = false): TrackingReportsExport {
+  const frozen = db.getReportSnapshot(reportId);
+  if (frozen && !reconstruct) return frozen.payload;
   const report = db.getTrackingReport(reportId);
   const { courseLevel, trimester } = report;
   if (!isCourseLevel(courseLevel) || !isTrimester(trimester) || !db.hasCourse(courseLevel)) throw new Error('INVALID_REPORT_SELECTION');
@@ -34,15 +36,23 @@ export function buildTrackingReports(db: AppDatabase, reportId: number): Trackin
   // Una optativa es una asignatura normal con un subconjunto de alumnado.
   // No se agrupan entregas ni se infiere una asignatura llamada «Optativa».
   const deliveryBySubject = new Map(imported.map(item => [item.subject, item] as const));
-  const subjects: ResolvedSubject[] = db.listSubjects(courseLevel).flatMap(subject => {
-    const delivery = deliveryBySubject.get(subject.name);
-    return delivery ? [{ name: subject.name, delivery }] : [];
+  const orderedNames = [...new Set([...db.listSubjects(courseLevel).map(subject => subject.name), ...imported.map(item => item.subject)])];
+  const subjects: ResolvedSubject[] = orderedNames.flatMap(name => {
+    const delivery = deliveryBySubject.get(name);
+    return delivery ? [{ name, delivery }] : [];
   });
 
-  if (subjects.length === 0) throw new Error('NO_IMPORTED_DELIVERIES');
+  if (subjects.length === 0 && !reconstruct) throw new Error('NO_IMPORTED_DELIVERIES');
 
   const tutorObservations = db.listTutorObservations();
-  const students = db.listStudents(courseLevel);
+  const roster = db.getReportRoster(reportId);
+  const students = reconstruct && roster.length === 0 ? db.listStudents(courseLevel).map(student => ({ id: student.id, name: student.fullName })) : roster;
+  if (!reconstruct) {
+    for (const subject of subjects) {
+      const comparison = db.compareDelivery(subject.delivery.payload, roster);
+      if (subject.delivery.isStale || !comparison.matches) throw new Error(`Entrega desactualizada (${subject.name}). Altas: ${comparison.missingInFile.join(', ') || 'ninguna'}; bajas: ${comparison.extraInFile.join(', ') || 'ninguna'}. Actualiza el listado y reexporta la entrega.`);
+    }
+  }
 
   return {
     format: 'edutrack-tracking-reports',
@@ -66,15 +76,17 @@ export function buildTrackingReports(db: AppDatabase, reportId: number): Trackin
       };
     }),
     students: students.map(student => ({
-      name: student.fullName,
+      name: student.name,
       tutorObservation: tutorObservations[`${reportId}:${student.id}`] ?? '',
       subjects: subjects.flatMap(subject => {
-        const importedStudent = subject.delivery.payload.students.find(item => item.name === student.fullName);
+        const importedStudent = subject.delivery.payload.students.find(item => item.name === student.name);
         if (subject.delivery.payload.subject.isElective && importedStudent?.enabled === false) return [];
+        if (!importedStudent && !reconstruct) throw new Error(`Falta ${student.name} en la entrega ${subject.name}. Actualiza el listado y reexporta la entrega.`);
         return {
           name: subject.name,
           values: importedStudent?.values ?? {},
-          observations: importedStudent?.observations ?? {}
+          observations: importedStudent?.observations ?? {},
+          applicability: importedStudent?.applicability
         };
       })
     }))

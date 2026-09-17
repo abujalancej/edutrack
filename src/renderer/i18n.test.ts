@@ -1,5 +1,34 @@
 import { describe, expect, it } from 'vitest';
-import { localizedError, reportUi, setActiveLanguage, setActiveTeacherSex, subjectUi, tr, trimesterOptionUi, trimesterUi } from './i18n';
+import { centerRosterChangeMessage, centerUpdateText, localizedError, reportUi, setActiveLanguage, setActiveTeacherSex, subjectUi, tr, trimesterOptionUi, trimesterUi } from './i18n';
+
+describe('importación segura del centro', () => {
+  it.each(['es', 'ca', 'en', 'eu', 'gl'] as const)('muestra altas y bajas en %s sin ocultar nombres', language => {
+    setActiveLanguage(language);
+    const message = centerRosterChangeMessage([{ course: '1r ESO', added: ['Carla Costa'], removed: ['Biel Casas'] }]);
+    expect(message).toContain('1r ESO');
+    expect(message).toContain('Carla Costa');
+    expect(message).toContain('Biel Casas');
+    expect(tr('replaceCenterDataWarning')).not.toMatch(/sustituidos|substituiran|replaced|ordeztuko|substituiranse/);
+    setActiveLanguage('es');
+  });
+});
+
+describe('protección de entregas e informes', () => {
+  it.each(['es', 'ca', 'en', 'eu', 'gl'] as const)('explica en %s cómo reemplazar una entrega obsoleta', language => {
+    setActiveLanguage(language);
+    expect(localizedError('El listado de la entrega no coincide con el informe. Actualiza el listado y reexporta la entrega.', 'importError')).not.toBe(tr('importError'));
+    expect(localizedError('El informe ya está emitido. Copia el informe antes de importar nuevas entregas.', 'importError')).not.toBe(tr('importError'));
+    setActiveLanguage('es');
+  });
+});
+
+describe('vista previa de actualización del centro', () => {
+  it.each(['es', 'ca', 'en', 'eu', 'gl'] as const)('tiene todas las etiquetas en %s', language => {
+    const labels = centerUpdateText[language];
+    expect(Object.values(labels).every(value => value.trim().length > 0)).toBe(true);
+    if (language !== 'es') expect(labels.preservation).not.toBe(centerUpdateText.es.preservation);
+  });
+});
 
 describe('tratamiento según el sexo del docente', () => {
   it('usa el masculino por defecto y el femenino cuando se selecciona', () => {

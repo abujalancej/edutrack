@@ -1,0 +1,18 @@
+{
+  "assessmentWeights": { "exam": 70, "continuousAssessment": 30 },
+  "finalReportGradeMode": "LETTER",
+  "notEvaluated": "NP",
+  "gradesExplanation": { "NA": "No assolit", "AS": "Assoliment satisfactori", "AN": "Assoliment notable", "AE": "Assoliment excel·lent", "NP": "No presentat" },
+  "grades": [
+    { "grade": "NA-", "from": 0.0 }, { "grade": "NA", "from": 3.0 }, { "grade": "NA+", "from": 4.0 },
+    { "grade": "AS-", "from": 5.0 }, { "grade": "AS", "from": 5.5 }, { "grade": "AS+", "from": 6.5 },
+    { "grade": "AN-", "from": 7.0 }, { "grade": "AN", "from": 7.5 }, { "grade": "AN+", "from": 8.5 },
+    { "grade": "AE-", "from": 9.0 }, { "grade": "AE", "from": 9.5 }, { "grade": "AE+", "from": 9.8 }
+  ],
+  "courses": [
+    { "name": "1r ESO", "subjects": ["Català", "Anglès", "Optativa 1", "Optativa 2"], "students": ["Aina Bosch", "Carla Costa"] },
+    { "name": "2n ESO", "subjects": ["Català", "Anglès", "Optativa"], "students": ["Carla Costa", "David Duran"] },
+    { "name": "3r ESO", "subjects": ["Català", "Anglès", "Optativa"], "students": ["Emma Esteve", "Ferran Ferrer"] },
+    { "name": "4t ESO", "subjects": ["Català", "Anglès", "Optativa"], "students": ["Gina Font", "Hugo Garcia"] }
+  ]
+}

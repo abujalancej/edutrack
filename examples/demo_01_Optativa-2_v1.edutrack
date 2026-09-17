@@ -1,0 +1,63 @@
+{
+  "format": "full-seguiment",
+  "version": 1,
+  "exportedAt": "2026-09-16T17:10:00.000Z",
+  "teacher": {
+    "firstName": "Júlia",
+    "lastName": "Ferrer",
+    "sex": "FEMALE"
+  },
+  "course": {
+    "level": "ESO_1",
+    "name": "1r ESO"
+  },
+  "trimester": {
+    "id": "T_1",
+    "name": "1r Trimestre"
+  },
+  "subject": {
+    "name": "Optativa 2",
+    "gradeMode": "NUMERIC",
+    "isElective": true
+  },
+  "columns": [
+    {
+      "id": "col_4decd3a5-2bb8-4ac6-a58b-bac70cb4ae21",
+      "name": "Taller creatiu",
+      "kind": "CONTINUOUS_ASSESSMENT",
+      "assessmentDate": "2026-09-11"
+    },
+    {
+      "id": "col_043cd9f5-8e17-4cd0-83bb-3f07986cc25e",
+      "name": "Memòria del projecte",
+      "kind": "CONTINUOUS_ASSESSMENT",
+      "assessmentDate": "2026-09-16"
+    }
+  ],
+  "students": [
+    {
+      "name": "Aina Bosch",
+      "enabled": true,
+      "values": {
+        "col_4decd3a5-2bb8-4ac6-a58b-bac70cb4ae21": "8.5",
+        "col_043cd9f5-8e17-4cd0-83bb-3f07986cc25e": "4"
+      },
+      "observations": {
+        "col_4decd3a5-2bb8-4ac6-a58b-bac70cb4ae21": "Treballa amb iniciativa i aporta solucions creatives ben executades.",
+        "col_043cd9f5-8e17-4cd0-83bb-3f07986cc25e": "La memòria és incompleta i no justifica prou les decisions preses durant el procés."
+      }
+    },
+    {
+      "name": "Biel Casas",
+      "enabled": false,
+      "values": {
+        "col_4decd3a5-2bb8-4ac6-a58b-bac70cb4ae21": "",
+        "col_043cd9f5-8e17-4cd0-83bb-3f07986cc25e": ""
+      },
+      "observations": {
+        "col_4decd3a5-2bb8-4ac6-a58b-bac70cb4ae21": "",
+        "col_043cd9f5-8e17-4cd0-83bb-3f07986cc25e": ""
+      }
+    }
+  ]
+}

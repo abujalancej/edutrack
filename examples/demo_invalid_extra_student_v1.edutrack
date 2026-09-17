@@ -1,0 +1,75 @@
+{
+  "format": "full-seguiment",
+  "version": 1,
+  "exportedAt": "2026-09-16T17:21:00.000Z",
+  "teacher": {
+    "firstName": "Adrián",
+    "lastName": "Bujalance",
+    "sex": "MALE"
+  },
+  "course": {
+    "level": "ESO_1",
+    "name": "1r ESO"
+  },
+  "trimester": {
+    "id": "T_1",
+    "name": "1r Trimestre"
+  },
+  "subject": {
+    "name": "Català",
+    "gradeMode": "LETTER",
+    "isElective": false
+  },
+  "columns": [
+    {
+      "id": "col_wrong_extra_lectora",
+      "name": "Comprensió lectora",
+      "kind": "EXAM",
+      "assessmentDate": "2026-09-07"
+    },
+    {
+      "id": "col_wrong_extra_escrita",
+      "name": "Expressió escrita",
+      "kind": "CONTINUOUS_ASSESSMENT",
+      "assessmentDate": "2026-09-15"
+    }
+  ],
+  "students": [
+    {
+      "name": "Aina Bosch",
+      "enabled": true,
+      "values": {
+        "col_wrong_extra_lectora": "NA+",
+        "col_wrong_extra_escrita": "AS"
+      },
+      "observations": {
+        "col_wrong_extra_lectora": "Té dificultats per identificar la idea principal i justificar les respostes amb informació del text.",
+        "col_wrong_extra_escrita": "El text és coherent; cal revisar l’accentuació i la puntuació."
+      }
+    },
+    {
+      "name": "Biel Casas",
+      "enabled": true,
+      "values": {
+        "col_wrong_extra_lectora": "AN",
+        "col_wrong_extra_escrita": "AN+"
+      },
+      "observations": {
+        "col_wrong_extra_lectora": "Comprèn bé el text i argumenta les respostes amb exemples pertinents.",
+        "col_wrong_extra_escrita": "Redacció clara, ben estructurada i amb un vocabulari ric."
+      }
+    },
+    {
+      "name": "Carla Costa",
+      "enabled": true,
+      "values": {
+        "col_wrong_extra_lectora": "AS+",
+        "col_wrong_extra_escrita": "AN-"
+      },
+      "observations": {
+        "col_wrong_extra_lectora": "Comprèn el text i localitza la informació rellevant.",
+        "col_wrong_extra_escrita": "Organitza bé les idees i utilitza connectors adequats."
+      }
+    }
+  ]
+}

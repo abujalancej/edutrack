@@ -12,6 +12,23 @@ const valid: FullSeguimentExport = {
 
 describe('validateImport', () => {
   it('acepta una entrega portable válida', () => expect(validateImport(valid).ok).toBe(true));
+  it('lee v1 sin transformar los valores de nota', () => {
+    const legacy = { ...valid, students: [{ name: 'Anna Pérez', values: { col_a: 'NP' } }] };
+    const result = validateImport(legacy);
+    expect(result.ok && result.data.version).toBe(1);
+    expect(result.ok && result.data.students[0].values.col_a).toBe('NP');
+    expect(result.ok && result.data.students[0].applicability).toBeUndefined();
+  });
+  it('exige estados por evaluación en v2 y mantiene la nota separada', () => {
+    const student = { name: 'Anna Pérez', enrolled: true, values: { col_a: '' }, applicability: { col_a: 'NOT_APPLICABLE' } };
+    const updated = { ...valid, version: 2, students: [student] };
+    const result = validateImport(updated);
+    expect(result.ok && result.data.students[0]).toMatchObject(student);
+    expect(validateImport({ ...updated, students: [{ ...student, applicability: {} }] }).ok).toBe(false);
+    expect(validateImport({ ...updated, students: [{ ...student, applicability: { col_a: 'UNRESOLVED' } }] }).ok).toBe(false);
+    expect(validateImport({ ...updated, students: [{ ...student, enrolled: undefined }] }).ok).toBe(false);
+    expect(validateImport({ ...updated, students: [student, { ...student }] }).ok).toBe(false);
+  });
   it('acepta el identificador antiguo de trimestre y lo normaliza', () => {
     const legacy = { ...valid, trimester: { ...valid.trimester, id: 'TRIMESTER_1' } };
     const result = validateImport(legacy);

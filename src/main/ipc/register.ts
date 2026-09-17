@@ -1,19 +1,21 @@
 import { dialog, ipcMain } from 'electron';
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { isCourseLevel, normalizeTrimester } from '../../shared/catalogs/catalogs';
-import type { CourseLevel } from '../../shared/catalogs/catalogs';
 import { isCompleteGradeValue } from '../../shared/grades/grades';
 import type { FullSeguimentExport, ImportAnalysis, WorksheetFileAnalysis } from '../../shared/types/models';
-import type { AppDatabase } from '../database/database';
+import { CenterRosterChangeError, type AppDatabase, type RosterAssignment } from '../database/database';
 import { buildExport, suggestedFilename } from '../export/export-service';
 import { pdfFolderDialogLabels, writeStudentReportPdfs } from '../export/student-report-pdf-service';
-import { buildTrackingReports } from '../export/tracking-report-service';
+import { issueTrackingReport } from '../export/tracking-report-issue-service';
+import { deliveryRosterError } from '../import/delivery-roster';
 import { compareStudentNames, validateImport } from '../import/validation';
 import { parseRosterFile } from '../import/roster-parser';
 import { parseCenterFile, parseCoursesFile, parseSubjectsFile } from '../import/catalog-parser';
 
 export function registerIpc(db: AppDatabase) {
+  let pendingCenterUpdate: { token: string; courses: Array<{ name: string; subjects: string[]; students: string[] }>; centerConfiguration: ReturnType<AppDatabase['getCenterConfiguration']>; revision: string } | null = null;
   ipcMain.handle('state:get', () => db.getInitialState());
   ipcMain.handle('language:save', (_e, language) => db.saveLanguage(language));
   ipcMain.handle('profile:save', (_e, profile) => {
@@ -21,14 +23,42 @@ export function registerIpc(db: AppDatabase) {
     return db.saveProfile(profile);
   });
   ipcMain.handle('configuration:center-import', async () => {
+    if (db.listCourses().length || db.listStudents().length || db.listSubjects().length || db.listWorksheets().length || db.listTrackingReports().length) return { ok: false, code: 'CENTER_PREVIEW_REQUIRED', error: 'Los datos existentes requieren una vista previa antes de actualizarse.' };
     const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Datos del centro', extensions: ['csv', 'json'] }] });
     if (result.canceled || !result.filePaths[0]) return { ok: false, cancelled: true };
     try {
       const path = result.filePaths[0]; const parsed = parseCenterFile(await readFile(path, 'utf8'), extname(path));
       if (!parsed.ok) return parsed;
       return { ok: true, ...db.replaceCenterData(parsed.courses, parsed.centerConfiguration) };
-    } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'No se han podido cargar los datos del centro.' }; }
+    } catch (error) {
+      if (error instanceof CenterRosterChangeError) return { ok: false, code: 'CENTER_ROSTER_CHANGED', rosterChanges: error.changes, error: error.message };
+      return { ok: false, error: error instanceof Error ? error.message : 'No se han podido cargar los datos del centro.' };
+    }
   });
+  ipcMain.handle('configuration:center-analyze', async () => {
+    pendingCenterUpdate = null;
+    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Datos del centro', extensions: ['csv', 'json'] }] });
+    if (result.canceled || !result.filePaths[0]) return { ok: false, cancelled: true };
+    try {
+      const path = result.filePaths[0];
+      const parsed = parseCenterFile(await readFile(path, 'utf8'), extname(path));
+      if (!parsed.ok) return parsed;
+      const preview = db.analyzeCenterUpdate(parsed.courses, parsed.centerConfiguration);
+      const token = randomUUID();
+      pendingCenterUpdate = { token, courses: parsed.courses, centerConfiguration: parsed.centerConfiguration, revision: preview.revision };
+      return { ok: true, token, preview };
+    } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'No se ha podido analizar el archivo.' }; }
+  });
+  ipcMain.handle('configuration:center-apply', (_e, token: string, effectiveDate: string | null, assignments: RosterAssignment[]) => {
+    if (!pendingCenterUpdate || token !== pendingCenterUpdate.token) return { ok: false, error: 'La vista previa ya no es válida. Vuelve a cargar el archivo.' };
+    if (!Array.isArray(assignments) || assignments.some(item => !item || typeof item.courseId !== 'string' || typeof item.incomingName !== 'string' || (item.studentId !== null && !Number.isInteger(item.studentId)))) return { ok: false, error: 'Las correspondencias del alumnado no son válidas.' };
+    try {
+      const result = db.applyCenterUpdate(pendingCenterUpdate.courses, pendingCenterUpdate.centerConfiguration, effectiveDate, assignments, pendingCenterUpdate.revision);
+      pendingCenterUpdate = null;
+      return { ok: true, ...result };
+    } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'No se ha podido actualizar el centro.' }; }
+  });
+  ipcMain.handle('configuration:center-cancel', () => { pendingCenterUpdate = null; });
   ipcMain.handle('configuration:center-clear', () => db.clearCenterData());
   ipcMain.handle('configuration:courses-import', async () => {
     const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Catálogo de cursos', extensions: ['csv', 'json'] }] });
@@ -157,9 +187,10 @@ export function registerIpc(db: AppDatabase) {
       const validation = validateImport(parsed);
       if (!validation.ok) return { path, ok: false, error: validation.error };
       if (!db.hasCourse(validation.data.course.level) || db.courseName(validation.data.course.level) !== validation.data.course.name || !db.hasSubject(validation.data.course.level, validation.data.subject.name)) return { path, ok: false, error: 'El curso o la asignatura del archivo no están configurados en este centro.' };
-      const official = db.listStudents(validation.data.course.level).map(student => student.fullName);
-      const comparison = compareStudentNames(official, validation.data.students.map(student => student.name));
-      if (!comparison.matches) return { path, ok: false, error: 'La lista de alumnos no coincide con la lista oficial del Tutor.', ...comparison };
+      if (db.isLatestReportIssued(validation.data.course.level, validation.data.trimester.id)) return { path, ok: false, error: 'El informe ya está emitido. Copia el informe antes de importar nuevas entregas.' };
+      const comparison = db.compareDelivery(validation.data);
+      if (!comparison.matches) return { path, ok: false, error: deliveryRosterError(comparison), ...comparison };
+      db.assertDeliveryApplicability(validation.data);
       return { path, ok: true, data: validation.data, duplicate: db.hasImport(validation.data) };
     } catch (error) { return { path, ok: false, error: error instanceof Error ? error.message : 'No se ha podido leer el archivo.' }; }
   })));
@@ -168,10 +199,11 @@ export function registerIpc(db: AppDatabase) {
     if (!valid.ok) return { ok: false, error: valid.error };
     const normalized = valid.data;
     if (!db.hasCourse(normalized.course.level) || db.courseName(normalized.course.level) !== normalized.course.name || !db.hasSubject(normalized.course.level, normalized.subject.name)) return { ok: false, error: 'El curso o la asignatura no están configurados.' };
-    const official = db.listStudents(normalized.course.level as CourseLevel).map(student => student.fullName);
-    if (!compareStudentNames(official, normalized.students.map(student => student.name)).matches) return { ok: false, error: 'La lista de alumnos ha cambiado. Revisa de nuevo el archivo.' };
+    if (db.isLatestReportIssued(normalized.course.level, normalized.trimester.id)) return { ok: false, error: 'El informe ya está emitido. Copia el informe antes de importar nuevas entregas.' };
+    const comparison = db.compareDelivery(normalized);
+    if (!comparison.matches) return { ok: false, error: deliveryRosterError(comparison), missingInFile: comparison.missingInFile, extraInFile: comparison.extraInFile };
     const replaced = db.hasImport(normalized);
-    db.saveImport(normalized, replaced);
+    try { db.saveImport(normalized, replaced); } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'No se ha podido importar la entrega.' }; }
     return { ok: true, replaced };
   });
   ipcMain.handle('import:get', (_e, id) => db.getImportedWorksheet(id));
@@ -191,15 +223,16 @@ export function registerIpc(db: AppDatabase) {
   ipcMain.handle('tracking-reports:export', async (_e, reportId: number) => {
     try {
       if (!Number.isInteger(reportId) || reportId <= 0) throw new Error('INVALID_REPORT_SELECTION');
-      const data = buildTrackingReports(db, reportId);
-      const folderDialog = pdfFolderDialogLabels(data.language);
-      const result = await dialog.showOpenDialog({
-        title: folderDialog.title,
-        buttonLabel: folderDialog.buttonLabel,
-        properties: ['openDirectory', 'createDirectory']
-      });
-      if (result.canceled || !result.filePaths[0]) return { ok: false, code: 'CANCELLED' };
-      const count = await writeStudentReportPdfs(data, result.filePaths[0]);
+      const count = await issueTrackingReport(db, reportId, async data => {
+        const folderDialog = pdfFolderDialogLabels(data.language);
+        const result = await dialog.showOpenDialog({
+          title: folderDialog.title,
+          buttonLabel: folderDialog.buttonLabel,
+          properties: ['openDirectory', 'createDirectory']
+        });
+        return result.canceled ? null : result.filePaths[0] ?? null;
+      }, writeStudentReportPdfs);
+      if (count === null) return { ok: false, code: 'CANCELLED' };
       return { ok: true, count };
     } catch (error) {
       const code = error instanceof Error ? error.message : 'EXPORT_ERROR';

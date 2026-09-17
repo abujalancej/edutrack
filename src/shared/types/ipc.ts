@@ -1,14 +1,17 @@
 import type { CourseLevel, Trimester } from '../catalogs/catalogs';
 import type { AssessmentKind, GradeMode } from './models';
-import type { AppLanguage, CenterConfiguration, ConfiguredCourse, ConfiguredSubject, FullSeguimentExport, ImportedWorksheetDetail, ImportedWorksheetSummary, ImportAnalysis, InitialState, RosterFileAnalysis, Student, TeacherProfile, TrackingReportSummary, WorksheetDetail, WorksheetFileAnalysis, WorksheetSummary } from './models';
+import type { AppLanguage, CenterConfiguration, CenterRosterChange, CenterUpdatePreview, ConfiguredCourse, ConfiguredSubject, FullSeguimentExport, ImportedWorksheetDetail, ImportedWorksheetSummary, ImportAnalysis, InitialState, RosterAssignment, RosterFileAnalysis, Student, TeacherProfile, TrackingReportSummary, WorksheetDetail, WorksheetFileAnalysis, WorksheetSummary } from './models';
 
-export interface OperationResult { ok: boolean; code?: string; error?: string; replaced?: boolean; count?: number; worksheetId?: number }
+export interface OperationResult { ok: boolean; code?: string; error?: string; replaced?: boolean; count?: number; worksheetId?: number; missingInFile?: string[]; extraInFile?: string[] }
 
 export interface FullSeguimentApi {
   getInitialState(): Promise<InitialState>;
   saveLanguage(language: AppLanguage): Promise<AppLanguage>;
   saveProfile(profile: TeacherProfile): Promise<TeacherProfile>;
-  importCenterData(): Promise<{ ok: boolean; courses?: ConfiguredCourse[]; subjects?: ConfiguredSubject[]; students?: Student[]; centerConfiguration?: CenterConfiguration; error?: string; cancelled?: boolean }>;
+  importCenterData(): Promise<{ ok: boolean; courses?: ConfiguredCourse[]; subjects?: ConfiguredSubject[]; students?: Student[]; centerConfiguration?: CenterConfiguration; error?: string; cancelled?: boolean; code?: string; rosterChanges?: CenterRosterChange[] }>;
+  analyzeCenterImport(): Promise<{ ok: true; token: string; preview: CenterUpdatePreview } | { ok: false; cancelled?: boolean; error?: string }>;
+  applyCenterImport(token: string, effectiveDate: string | null, assignments: RosterAssignment[]): Promise<{ ok: boolean; courses?: ConfiguredCourse[]; subjects?: ConfiguredSubject[]; students?: Student[]; error?: string }>;
+  cancelCenterImport(): Promise<void>;
   clearCenterData(): Promise<void>;
   importCourses(): Promise<{ ok: boolean; courses?: ConfiguredCourse[]; error?: string; cancelled?: boolean }>;
   importSubjects(): Promise<{ ok: boolean; subjects?: ConfiguredSubject[]; error?: string; cancelled?: boolean }>;

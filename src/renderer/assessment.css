@@ -428,6 +428,20 @@ button, input, select, textarea { font-size: 14px; }
 
 .panel h2, .status-heading h2, .results-heading h2 { font-size: 18px; }
 .configuration-card h3 { font-size: 16px; }
+.center-update-modal { width: min(760px, calc(100vw - 48px)); max-height: min(90vh, 900px); display: flex; flex-direction: column; }
+.center-update-modal > .modal-body { overflow-y: auto; min-height: 0; display: grid; gap: 12px; }
+.center-update-warning { background: #eef8f4; border-left: 4px solid var(--green); color: #244b40; padding: 10px 12px; border-radius: 6px; font-weight: 700; }
+.center-update-course { border: 1px solid var(--line); border-radius: 9px; padding: 12px; display: grid; gap: 8px; }
+.center-update-course h3 { margin: 0 0 3px; font-size: 15px; }
+.center-update-course h3 small { margin-left: 7px; font-size: 11px; font-weight: 500; color: var(--muted); }
+.center-update-summary { display: grid; grid-template-columns: minmax(155px, 34%) 1fr; gap: 10px; font-size: 12px; line-height: 1.4; }
+.center-update-summary strong { color: #38534b; }
+.center-update-summary > span { color: #52665e; }
+.center-update-assignment { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.center-update-assignment select, .center-update-date input { width: 100%; min-height: 36px; border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; background: white; }
+.center-update-date { display: grid; gap: 5px; font-weight: 700; }
+.center-update-error { background: #fff0ef; color: #9d3d3d; border-radius: 6px; padding: 9px 11px; font-size: 12px; }
+.center-update-actions { display: flex; justify-content: flex-end; gap: 10px; position: sticky; bottom: 0; background: white; padding-top: 8px; }
 .configuration-status { min-height: 44px; font-size: 13px; line-height: 1.35; }
 .configuration-format, .language-select, .roster-format, .inline-warning { font-size: 13px; }
 .course-tabs button { font-size: 13px; }

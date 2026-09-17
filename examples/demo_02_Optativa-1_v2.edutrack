@@ -1,0 +1,19 @@
+{
+  "format": "full-seguiment",
+  "version": 2,
+  "exportedAt": "2026-09-17T06:00:00.000Z",
+  "teacher": { "firstName": "Marc", "lastName": "Vidal", "sex": "MALE" },
+  "course": { "level": "ESO_1", "name": "1r ESO" },
+  "trimester": { "id": "T_1", "name": "1r Trimestre" },
+  "subject": { "name": "Optativa 1", "gradeMode": "NUMERIC", "isElective": true },
+  "columns": [
+    { "id": "col_082b46a4-1c0b-4515-a50f-8990e62af996", "name": "Projecte pràctic", "kind": "CONTINUOUS_ASSESSMENT", "assessmentDate": "2026-09-10" },
+    { "id": "col_92fd8e5c-06a9-49ae-bc5c-e9c178125150", "name": "Presentació del projecte", "kind": "CONTINUOUS_ASSESSMENT", "assessmentDate": "2026-09-16" },
+    { "id": "demo-optativa1-17", "name": "Revisió del projecte", "kind": "CONTINUOUS_ASSESSMENT", "assessmentDate": "2026-09-17" }
+  ],
+  "students": [
+    { "name": "Aina Bosch", "enabled": false, "enrolled": true, "values": { "col_082b46a4-1c0b-4515-a50f-8990e62af996": "", "col_92fd8e5c-06a9-49ae-bc5c-e9c178125150": "", "demo-optativa1-17": "" }, "applicability": { "col_082b46a4-1c0b-4515-a50f-8990e62af996": "APPLICABLE", "col_92fd8e5c-06a9-49ae-bc5c-e9c178125150": "APPLICABLE", "demo-optativa1-17": "APPLICABLE" } },
+    { "name": "Biel Casas", "enabled": true, "enrolled": true, "values": { "col_082b46a4-1c0b-4515-a50f-8990e62af996": "4.5", "col_92fd8e5c-06a9-49ae-bc5c-e9c178125150": "8", "demo-optativa1-17": "7" }, "applicability": { "col_082b46a4-1c0b-4515-a50f-8990e62af996": "APPLICABLE", "col_92fd8e5c-06a9-49ae-bc5c-e9c178125150": "APPLICABLE", "demo-optativa1-17": "APPLICABLE" } },
+    { "name": "Carla Costa", "enabled": false, "enrolled": true, "values": { "col_082b46a4-1c0b-4515-a50f-8990e62af996": "", "col_92fd8e5c-06a9-49ae-bc5c-e9c178125150": "", "demo-optativa1-17": "" }, "applicability": { "col_082b46a4-1c0b-4515-a50f-8990e62af996": "NOT_APPLICABLE", "col_92fd8e5c-06a9-49ae-bc5c-e9c178125150": "NOT_APPLICABLE", "demo-optativa1-17": "APPLICABLE" } }
+  ]
+}

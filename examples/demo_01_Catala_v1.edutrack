@@ -1,0 +1,63 @@
+{
+  "format": "full-seguiment",
+  "version": 1,
+  "exportedAt": "2026-09-16T16:55:23.738Z",
+  "teacher": {
+    "firstName": "Adrián",
+    "lastName": "Bujalance",
+    "sex": "MALE"
+  },
+  "course": {
+    "level": "ESO_1",
+    "name": "1r ESO"
+  },
+  "trimester": {
+    "id": "T_1",
+    "name": "1r Trimestre"
+  },
+  "subject": {
+    "name": "Català",
+    "gradeMode": "LETTER",
+    "isElective": false
+  },
+  "columns": [
+    {
+      "id": "col_65783041-0d5d-406a-8cb0-235bfa925cda",
+      "name": "Comprensió lectora",
+      "kind": "EXAM",
+      "assessmentDate": "2026-09-07"
+    },
+    {
+      "id": "col_0de4b125-ada7-4ac1-9465-3715d3a36a3b",
+      "name": "Expressió escrita",
+      "kind": "CONTINUOUS_ASSESSMENT",
+      "assessmentDate": "2026-09-15"
+    }
+  ],
+  "students": [
+    {
+      "name": "Aina Bosch",
+      "enabled": true,
+      "values": {
+        "col_65783041-0d5d-406a-8cb0-235bfa925cda": "NA+",
+        "col_0de4b125-ada7-4ac1-9465-3715d3a36a3b": "AS"
+      },
+      "observations": {
+        "col_65783041-0d5d-406a-8cb0-235bfa925cda": "Té dificultats per identificar la idea principal i justificar les respostes amb informació del text.",
+        "col_0de4b125-ada7-4ac1-9465-3715d3a36a3b": "El text és coherent; cal revisar l’accentuació i la puntuació."
+      }
+    },
+    {
+      "name": "Biel Casas",
+      "enabled": true,
+      "values": {
+        "col_65783041-0d5d-406a-8cb0-235bfa925cda": "AN",
+        "col_0de4b125-ada7-4ac1-9465-3715d3a36a3b": "AN+"
+      },
+      "observations": {
+        "col_65783041-0d5d-406a-8cb0-235bfa925cda": "Comprèn bé el text i argumenta les respostes amb exemples pertinents.",
+        "col_0de4b125-ada7-4ac1-9465-3715d3a36a3b": "Redacció clara, ben estructurada i amb un vocabulari ric."
+      }
+    }
+  ]
+}
