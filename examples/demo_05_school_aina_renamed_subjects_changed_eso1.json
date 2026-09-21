@@ -4,10 +4,18 @@
   "notEvaluated": "NP",
   "gradesExplanation": { "NA": "No assolit", "AS": "Assoliment satisfactori", "AN": "Assoliment notable", "AE": "Assoliment excel·lent", "NP": "No presentat" },
   "grades": [
-    { "grade": "NA-", "from": 0.0 }, { "grade": "NA", "from": 3.0 }, { "grade": "NA+", "from": 4.0 },
-    { "grade": "AS-", "from": 5.0 }, { "grade": "AS", "from": 5.5 }, { "grade": "AS+", "from": 6.5 },
-    { "grade": "AN-", "from": 7.0 }, { "grade": "AN", "from": 7.5 }, { "grade": "AN+", "from": 8.5 },
-    { "grade": "AE-", "from": 9.0 }, { "grade": "AE", "from": 9.5 }, { "grade": "AE+", "from": 9.8 }
+    { "grade": "NA-", "from": 0.0 },
+    { "grade": "NA", "from": 2.5 },
+    { "grade": "NA+", "from": 3.75 },
+    { "grade": "AS-", "from": 4.5 },
+    { "grade": "AS", "from": 5.0 },
+    { "grade": "AS+", "from": 6.0 },
+    { "grade": "AN-", "from": 6.5 },
+    { "grade": "AN", "from": 7.0 },
+    { "grade": "AN+", "from": 8.0 },
+    { "grade": "AE-", "from": 8.5 },
+    { "grade": "AE", "from": 9.0 },
+    { "grade": "AE+", "from": 10.0 }
   ],
   "courses": [
     { "name": "1r ESO", "subjects": ["Català", "Anglès", "Optativa 2", "Matemàtiques"], "students": ["Aina Maria Bosch", "Biel Casas", "Carla Costa"] },
