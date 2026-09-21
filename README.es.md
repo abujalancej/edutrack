@@ -6,9 +6,9 @@
   <img src="public/app-icon.png" alt="Logo de EduTrack" width="220">
 </p>
 
-EduTrack `1.1.0` es una aplicación de escritorio local para la evaluación continua y el seguimiento del alumnado en Educación Secundaria.
+EduTrack es una aplicación de escritorio local para la evaluación continua y el seguimiento del alumnado en Educación Secundaria.
 
-El profesorado registra las evaluaciones de cada asignatura y las exporta como archivos `.edutrack`. La tutoría importa esos archivos, completa la hoja de seguimiento más reciente de cada curso y trimestre y genera un PDF por alumno. No se necesita ningún servicio externo: los datos del centro permanecen en el equipo local.
+El profesorado registra las evaluaciones de cada asignatura y las exporta como archivos `.edutrack`. La tutoría importa esos archivos, completa la hoja de seguimiento más reciente de cada curso y trimestre y genera un PDF por alumno y otro PDF conjunto. No se necesita ningún servicio externo: los datos del centro permanecen en el equipo local.
 
 La interfaz está disponible en castellano, catalán, inglés, euskera y gallego. Los nombres de las asignaturas proceden del catálogo del centro y la interfaz nunca los traduce.
 
@@ -20,10 +20,14 @@ La interfaz está disponible en castellano, catalán, inglés, euskera y gallego
 - Notas numéricas o con letras, fechas y observaciones para cada evaluación.
 - Exportación `.edutrack` validada estrictamente e importación de varios archivos.
 - Comparación exacta de listas y confirmación antes de reemplazar entregas duplicadas.
+- Actualización segura de las listas oficiales con vista previa, fechas efectivas, vinculación explícita de identidades y conservación del historial.
 - Asignaturas optativas que pueden aplicarse solo al alumnado que las cursa.
+- Aplicabilidad de las evaluaciones según las fechas de matriculación, diferenciada de una nota explícita de no evaluado.
+- Importación y copia de hojas de asignatura a otro trimestre, con avisos sobre el alumnado y las evaluaciones que se heredan.
 - Última hoja de seguimiento por curso y trimestre, con copia para el siguiente informe.
+- Informes emitidos de solo lectura, detección de entregas desactualizadas tras cambios de lista y exclusión explícita de entregas cuando proceda.
 - Contadores de asignaturas y observaciones de tutoría antes de generar los PDF.
-- Un PDF por alumno con todas las asignaturas, notas, fechas, observaciones, observaciones de tutoría, firma de la familia y paginación real.
+- Un PDF por alumno y otro PDF conjunto, con todas las asignaturas, notas, fechas, observaciones, observaciones de tutoría, firma de la familia y paginación real.
 - Persistencia SQLite local y frontera IPC segura de Electron.
 
 ## Rutas de la aplicación
@@ -107,15 +111,31 @@ app.getPath('userData')/edutrack.sqlite
 
 ## Uso
 
-1. Abre **Configuración** y carga los cursos, asignaturas y listas oficiales del centro.
+1. Abre **Configuración** y carga los cursos, asignaturas y listas oficiales del centro. Si ya hay datos cargados, revisa la vista previa, indica una fecha efectiva para los cambios de alumnado y resuelve las posibles coincidencias de nombres antes de aplicar la actualización.
 2. Completa el perfil del profesor y elige el idioma de la interfaz.
-3. En **Profesor**, crea una hoja para un curso, trimestre y asignatura; añade evaluaciones, notas y observaciones; después exporta el archivo `.edutrack`.
+3. En **Profesor**, crea una hoja para un curso, trimestre y asignatura; añade evaluaciones, notas y observaciones; después exporta el archivo `.edutrack`. También puedes importar una hoja existente o copiar su estructura a otro trimestre; las copias no conservan fechas, notas ni observaciones.
 4. Envía el archivo exportado al tutor. Puedes importar varios archivos de asignatura a la vez.
-5. En **Tutor**, valida los archivos con la lista oficial e importa las entregas correctas. Las importaciones siempre actualizan la hoja de seguimiento más reciente del mismo curso y trimestre.
-6. Añade las observaciones de tutoría. La hoja solo está lista cuando se han recibido todas las asignaturas configuradas; una optativa puede no tener nota para quien no la cursa.
-7. Genera un PDF localizado e independiente para cada alumno cuando la hoja esté completa.
+5. En **Tutor**, valida los archivos con la lista oficial e importa las entregas correctas. Las importaciones siempre actualizan la hoja de seguimiento más reciente del mismo curso y trimestre; después de actualizar la lista, el profesorado debe exportar entregas nuevas.
+6. Añade las observaciones de tutoría. La hoja está lista cuando cada asignatura bloqueante tiene una entrega actual; una optativa puede no tener nota para quien no la cursa. Una entrega recibida solo puede excluirse de la comprobación de completitud mediante una confirmación explícita.
+7. Genera un PDF localizado por alumno y otro PDF conjunto cuando la hoja esté completa. Al emitir el informe se congela su instantánea; para seguir trabajando en una versión posterior, copia el informe.
 
 La carpeta `examples/` contiene cuatro entregas de asignaturas de profesores diferentes y un catálogo de cuatro cursos para probar el flujo completo.
+
+## Demo
+
+Sigue el recorrido completo, con datos ficticios, para probar la actualización del listado y el historial:
+
+- [Instrucciones de la demo en español](examples/demo_instructions_es.md)
+- [Demo en inglés](examples/demo_instructions_en.md)
+- [Demo en catalán](examples/demo_instructions_ca.md)
+
+## Actualizaciones del listado e historial
+
+- Al actualizar los datos del centro se muestra primero una vista previa. Los cursos y las asignaturas ausentes en el archivo nuevo se conservan, y la aplicación no borra silenciosamente alumnos, hojas, entregas ni informes.
+- Para cada alta, baja, regreso o cambio de nombre, selecciona el alumno existente o confirma que se trata de una persona nueva. Las coincidencias ambiguas deben resolverse antes de aplicar la actualización.
+- La fecha efectiva determina si una evaluación es aplicable al alumno. Una evaluación fuera de su periodo de matriculación aparece como **No aplicable**, que es distinto de una nota explícita de no evaluado como `NP`.
+- Los informes emitidos son instantáneas de solo lectura. Al copiar un informe se crea la nueva versión de trabajo; las entregas heredadas se marcan como desactualizadas si la lista ya no coincide.
+- Una hoja copiada hereda los nombres y tipos de las evaluaciones, pero no sus fechas, notas ni observaciones. Los alumnos nuevos, los que han desaparecido y las evaluaciones nuevas aparecen señalados para su revisión.
 
 ## Almacenamiento de datos
 
@@ -152,6 +172,8 @@ Las exportaciones del profesorado usan un documento JSON versionado:
 }
 ```
 
+La versión 1 es el formato básico de las entregas. La versión 2 añade el estado de matriculación de cada alumno y la aplicabilidad de las evaluaciones mediante `enrolled` y `applicability`; `enabled` identifica al alumnado que cursa una asignatura optativa.
+
 Cada alumno guarda valores y observaciones de sus evaluaciones. La tutoría añade observaciones a la hoja correspondiente; los nombres, identificadores de curso y trimestre y la lista de alumnos deben coincidir con el catálogo configurado.
 
 ## Cálculos del seguimiento
@@ -159,13 +181,14 @@ Cada alumno guarda valores y observaciones de sus evaluaciones. La tutoría aña
 EduTrack calcula si una hoja está lista a partir del catálogo configurado, no del número de archivos seleccionados:
 
 ```text
-asignaturas recibidas = asignaturas importadas distintas del curso y trimestre
-asignaturas pendientes = asignaturas configuradas - asignaturas recibidas
+asignaturas bloqueantes = asignaturas configuradas cuyas entregas no se han excluido
+asignaturas recibidas = entregas actuales y no desactualizadas de las asignaturas bloqueantes
+asignaturas pendientes = asignaturas bloqueantes - asignaturas recibidas
 comentarios registrados = alumnos con una observación de tutoría
-lista para generar      = se han recibido todas las asignaturas configuradas
+lista para generar      = cada asignatura bloqueante tiene una entrega actual y no hay entregas desactualizadas
 ```
 
-Las optativas siguen siendo asignaturas normales del catálogo. Su cobertura puede ser menor que la lista oficial, por lo que quien no la cursa no se considera pendiente de nota.
+Las optativas siguen siendo asignaturas normales del catálogo. Su cobertura puede ser menor que la lista oficial, por lo que quien no la cursa no se considera pendiente de nota. Una asignatura excluida de la completitud aparece en el informe sin notas.
 
 ## API
 
@@ -174,11 +197,11 @@ El renderizador se comunica con el proceso principal de Electron mediante la API
 | Grupo | Operaciones |
 | --- | --- |
 | Estado y perfil | Cargar estado, guardar idioma y guardar perfil del profesor. |
-| Configuración | Importar o borrar datos del centro, cursos, asignaturas y logo. |
-| Alumnado | Añadir, editar, borrar, ordenar, importar y sustituir listas. |
-| Hojas de asignatura | Crear, editar, borrar, evaluar, guardar celdas y exportar `.edutrack`. |
+| Configuración | Previsualizar y aplicar actualizaciones del centro, importar o borrar datos, cursos, asignaturas y logo. |
+| Alumnado | Añadir, editar, borrar, ordenar, importar y actualizar listas con fechas efectivas. |
+| Hojas de asignatura | Crear, editar, copiar, importar, borrar, evaluar, guardar celdas y exportar `.edutrack`. |
 | Importaciones de tutoría | Seleccionar, validar, importar, inspeccionar, reemplazar y borrar entregas. |
-| Hojas de seguimiento | Guardar observaciones, copiar la última hoja, generar PDF y borrar hojas. |
+| Hojas de seguimiento | Guardar observaciones, excluir o recuperar entregas, copiar informes, generar PDF individuales y conjuntos y borrar hojas. |
 
 ## Estructura del proyecto
 

@@ -6,9 +6,9 @@
   <img src="public/app-icon.png" alt="EduTrack logo" width="220">
 </p>
 
-EduTrack `1.1.0` is a local desktop application for continuous assessment and student progress tracking in secondary education.
+EduTrack is a local desktop application for continuous assessment and student progress tracking in secondary education.
 
-Teachers record subject assessments and export them as `.edutrack` files. Tutors import those files, complete the latest tracking sheet for each course and term, and generate one PDF per student. No external service is required: school data stays on the local computer.
+Teachers record subject assessments and export them as `.edutrack` files. Tutors import those files, complete the latest tracking sheet for each course and term, and generate one PDF per student plus one combined PDF. No external service is required: school data stays on the local computer.
 
 The interface is available in Spanish, Catalan, English, Basque, and Galician. Subject names come from the school catalogue and are never translated by the interface.
 
@@ -20,10 +20,14 @@ The interface is available in Spanish, Catalan, English, Basque, and Galician. S
 - Numeric or letter grades, dates, and observations for every assessment.
 - Strictly validated `.edutrack` export and multi-file import.
 - Exact roster comparison and confirmation before replacing duplicate deliveries.
+- Safe school-roster updates with a preview, effective dates, explicit identity matching, and preserved history.
 - Elective subjects that can apply to only the students who take them.
+- Assessment applicability based on enrolment dates, separate from an explicit not-evaluated grade.
+- Subject-sheet import and copying to another term, with warnings for inherited students and assessments.
 - Latest tracking sheet per course and term, with copy support for the next report.
+- Read-only issued reports, stale-delivery detection after roster changes, and explicit delivery exclusion when appropriate.
 - Subject and tutor-observation progress counters before generation.
-- One student PDF containing every subject, grade, date, observation, tutor note, family signature, and real PDF pagination.
+- One PDF per student plus one combined PDF, containing every subject, grade, date, observation, tutor note, family signature, and real PDF pagination.
 - Local SQLite persistence and a secure Electron IPC boundary.
 
 ## Application routes
@@ -101,15 +105,31 @@ app.getPath('userData')/edutrack.sqlite
 
 ## Usage
 
-1. Open **Configuration** and load the school courses, subjects, and official student rosters.
+1. Open **Configuration** and load the school courses, subjects, and official student rosters. If the centre already has data, review the update preview, set an effective date for roster changes, and resolve proposed name matches before applying it.
 2. Complete the teacher profile and choose the interface language.
-3. In **Teacher**, create a sheet for a course, term, and subject; add assessments, grades, and observations; then export the `.edutrack` file.
+3. In **Teacher**, create a sheet for a course, term, and subject; add assessments, grades, and observations; then export the `.edutrack` file. You can also import an existing subject sheet or copy its assessment structure to another term; copied sheets do not carry over dates, grades, or observations.
 4. Send the exported file to the tutor. Several subject files can be imported together.
-5. In **Tutor**, validate the files against the official roster and import the valid deliveries. Imports always update the most recent tracking sheet for the same course and term.
-6. Add tutor observations. A tracking sheet becomes ready only when every configured subject has been received; an elective may have no grade for students who do not take it.
-7. Generate one localized PDF per student when the sheet is complete.
+5. In **Tutor**, validate the files against the official roster and import the valid deliveries. Imports always update the most recent tracking sheet for the same course and term; after a roster update, teachers must export fresh deliveries.
+6. Add tutor observations. A tracking sheet becomes ready when every blocking subject has a current delivery; an elective may have no grade for students who do not take it. A received subject can be excluded from completeness only with explicit confirmation.
+7. Generate one localized PDF per student and one combined PDF when the sheet is complete. Issuing the report freezes its snapshot; copy the report to continue working on a later version.
 
 The `examples/` directory contains four subject deliveries from different teachers and a four-course school catalogue for testing the complete workflow.
+
+## Demo
+
+Follow the fictional end-to-end roster and assessment walkthrough:
+
+- [English demo instructions](examples/demo_instructions_en.md)
+- [Spanish demo instructions](examples/demo_instructions_es.md)
+- [Catalan demo instructions](examples/demo_instructions_ca.md)
+
+## Roster updates and history
+
+- Updating a school file first opens a preview. Courses and subjects omitted from the new file are retained, and the application does not silently delete students, sheets, deliveries, or reports.
+- For each arrival, departure, return, or name change, select the existing student or confirm that the person is new. Ambiguous matches must be resolved before applying the update.
+- The effective date determines whether an assessment is applicable to a student. An assessment outside the enrolment period is shown as **Not applicable**, which is different from an explicit not-evaluated grade such as `NP`.
+- Issued reports are read-only snapshots. A copied report becomes the new working version; deliveries carried forward from a previous report are marked stale when the roster no longer matches them.
+- A copied worksheet inherits its assessment names and types, but not its dates, grades, or observations. New students, removed students, and new assessments are highlighted for review.
 
 ## Data storage
 
@@ -146,6 +166,8 @@ Teacher exports use a versioned JSON document with this shape:
 }
 ```
 
+Version 1 is the basic delivery format. Version 2 adds each student's enrolment status and assessment applicability through `enrolled` and `applicability`; `enabled` identifies which students take an elective subject.
+
 Each student stores assessment values and observations. The tutor adds observations to the corresponding tracking sheet; subject names, course names, term identifiers, and rosters must match the configured school catalogue.
 
 ## Progress calculations
@@ -153,13 +175,14 @@ Each student stores assessment values and observations. The tutor adds observati
 EduTrack calculates readiness from the configured catalogue, not from the number of files selected:
 
 ```text
-subjects received = distinct imported subjects for the course and term
-subjects pending  = configured subjects - subjects received
+blocking subjects = configured subjects whose deliveries have not been excluded
+subjects received = current, non-stale deliveries for blocking subjects
+subjects pending  = blocking subjects - subjects received
 comments recorded = students with a tutor observation
-ready             = every configured subject has been received
+ready             = every blocking subject has a current delivery and no delivery is stale
 ```
 
-Elective subjects remain ordinary configured subjects. Their student coverage can be smaller than the official roster, so students who do not take the elective are not treated as missing grades.
+Elective subjects remain ordinary configured subjects. Their student coverage can be smaller than the official roster, so students who do not take the elective are not treated as missing grades. A subject excluded from completeness is shown in the report without grades.
 
 ## API
 
@@ -168,11 +191,11 @@ The renderer communicates with the Electron main process through the isolated `f
 | Group | Operations |
 | --- | --- |
 | State and profile | Load state, save language, save teacher profile. |
-| Configuration | Import or clear school data, courses, subjects, and logo. |
-| Students | Add, edit, delete, reorder, import, and replace rosters. |
-| Subject sheets | Create, edit, delete, assess, save cells, and export `.edutrack` files. |
+| Configuration | Preview and apply school updates, import or clear school data, courses, subjects, and logo. |
+| Students | Add, edit, delete, reorder, import, and safely update rosters with effective dates. |
+| Subject sheets | Create, edit, copy, import, delete, assess, save cells, and export `.edutrack` files. |
 | Tutor imports | Select, validate, import, inspect, replace, and delete deliveries. |
-| Tracking sheets | Save tutor observations, copy the latest sheet, generate PDFs, and delete sheets. |
+| Tracking sheets | Save tutor observations, exclude or restore deliveries, copy reports, generate individual and combined PDFs, and delete sheets. |
 
 ## Project structure
 
@@ -203,6 +226,7 @@ edutrack/
 | `npm test` | Run the Vitest suite. |
 | `npm run build` | Create the production renderer and Electron build. |
 | `npm run dist:win` | Build the Windows NSIS x64 installer. |
+| `npm run dist:mac` | Build the macOS DMG installer. |
 
 ## Validation
 
