@@ -91,7 +91,7 @@ Genera l'instal·lador NSIS x64 per a Windows:
 npm run dist:win
 ```
 
-L'instal·lador s'escriu a `release/`.
+L'instal·lador s'escriu a `release/` com a `EduTrack-<version>-<os>-<arch>.<ext>`.
 
 ## Aplicació d'escriptori
 

@@ -97,7 +97,7 @@ Genera el instalador DMG para macOS:
 npm run dist:mac
 ```
 
-El instalador se escribe en `release/`.
+El instalador se escribe en `release/` como `EduTrack-<version>-<os>-<arch>.<ext>`.
 
 ## Aplicación de escritorio
 

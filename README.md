@@ -91,7 +91,7 @@ Create the Windows NSIS x64 installer:
 npm run dist:win
 ```
 
-The installer is written to `release/`.
+The installer is written to `release/` as `EduTrack-<version>-<os>-<arch>.<ext>`.
 
 ## Desktop application
 

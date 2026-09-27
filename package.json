@@ -44,6 +44,7 @@
   "build": {
     "appId": "com.edutrack.app",
     "productName": "EduTrack",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release",
       "buildResources": "build"
