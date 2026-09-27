@@ -14,8 +14,9 @@
     "lint": "eslint . --ext .ts,.tsx",
     "test": "vitest run",
     "build": "npm run typecheck && vite build && tsc -p tsconfig.main.json",
-    "dist:win": "npm run build && electron-builder --win nsis --x64",
-    "dist:mac": "npm run build && electron-builder --mac dmg"
+    "dist:win": "npm run build && electron-builder --win nsis --x64 -c.directories.output=out/win",
+    "dist:mac": "npm run build && electron-builder --mac dmg -c.directories.output=out/mac",
+    "dist:linux": "npm run build && electron-builder --linux AppImage -c.directories.output=out/linux"
   },
   "dependencies": {
     "pdf-lib": "^1.17.1",
@@ -46,7 +47,7 @@
     "productName": "EduTrack",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
-      "output": "release",
+      "output": "out",
       "buildResources": "build"
     },
     "files": [

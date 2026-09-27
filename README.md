@@ -91,7 +91,7 @@ Create the Windows NSIS x64 installer:
 npm run dist:win
 ```
 
-The installer is written to `release/` as `EduTrack-<version>-<os>-<arch>.<ext>`.
+Desktop artifacts are grouped by platform: `out/win/` for the Windows installer and unpacked app, `out/mac/` for the macOS DMG, and `out/linux/` for the Linux AppImage. Files use `EduTrack-<version>-<os>-<arch>.<ext>`.
 
 ## Desktop application
 

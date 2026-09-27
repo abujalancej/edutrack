@@ -91,7 +91,7 @@ Genera l'instal·lador NSIS x64 per a Windows:
 npm run dist:win
 ```
 
-L'instal·lador s'escriu a `release/` com a `EduTrack-<version>-<os>-<arch>.<ext>`.
+Els artefactes d'escriptori s'agrupen per plataforma: `out/win/` per a l'instal·lador i l'aplicació desempaquetada de Windows, `out/mac/` per al DMG de macOS i `out/linux/` per a l'AppImage de Linux. Els fitxers fan servir `EduTrack-<version>-<os>-<arch>.<ext>`.
 
 ## Aplicació d'escriptori
 

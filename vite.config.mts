@@ -9,5 +9,5 @@ export default defineConfig({
   // Relative asset paths are required for the packaged app (DMG/NSIS).
   base: './',
   build: { outDir: 'dist' },
-  test: { exclude: ['**/node_modules/**', '**/dist/**', '**/dist-electron/**', '**/release/**'] }
+  test: { exclude: ['**/node_modules/**', '**/dist/**', '**/dist-electron/**', '**/out/**', '**/release/**'] }
 });
