@@ -350,8 +350,13 @@ body { min-width: 720px; }
 .assessment-table .row-incomplete .student-name { background: #fffcf5; }
 .assessment-table .spreadsheet-cell { position: relative; user-select: none; }
 .assessment-table .spreadsheet-cell:hover::after { content: ''; position: absolute; inset: 0; z-index: 2; box-shadow: inset 0 0 0 1px #91afc1; pointer-events: none; }
-.assessment-table .spreadsheet-cell.cell-selected { background: #e5eff5; box-shadow: inset 0 0 0 1px #7f9fb2; }
-.assessment-table .spreadsheet-cell.cell-selected input, .assessment-table .spreadsheet-cell.cell-selected textarea { background: #e5eff5; box-shadow: none; }
+.assessment-table .spreadsheet-cell.cell-selected { box-shadow: inset 0 0 0 2px #7f9fb2; }
+/* Selection is an outline only: it must never replace a grade's semantic colour. */
+.assessment-table .spreadsheet-cell.cell-selected input, .assessment-table .spreadsheet-cell.cell-selected textarea { box-shadow: none; }
+/* These semantic colours take precedence over selection and incomplete-cell tints. */
+.assessment-table .grade-cell input.grade-pass { color: #176c50; background: #eaf7f0; }
+.assessment-table .grade-cell input.grade-fail { color: #a13f3f; background: #fff0ef; }
+.assessment-table .grade-cell input.grade-neutral { color: #65736f; background: transparent; }
 .assessment-table input::placeholder, .assessment-table textarea::placeholder { color: #b1bbb7; font-weight: 400; }
 .clear-cell { text-align: center; }
 .clear-cell button { border: 0; background: transparent; color: #a2ada9; width: 30px; height: 30px; border-radius: 7px; display: inline-grid; place-items: center; }
