@@ -105,11 +105,12 @@ describe('entregas e informes protegidos', () => {
     expect(db.getReportSnapshot(reportId)?.html).toEqual(html);
     expect(db.getReportSnapshot(reportId)?.origin).toBe('issued');
     expect(() => db.saveIssuedReportSnapshot(reportId, payload, html)).toThrow('REPORT_ALREADY_SNAPSHOTTED');
-    expect(() => db.saveImport(file(), true)).toThrow('READ_ONLY_REPORT');
-    expect(() => db.deleteTrackingReport(reportId)).toThrow('ISSUED_REPORT_CANNOT_BE_DELETED');
+    db.saveImport(file(), true);
+    expect(db.getReportSnapshot(reportId)).toBeNull();
+    expect(() => db.deleteTrackingReport(reportId)).not.toThrow();
   });
 
-  it('solo guarda la instantánea tras exportar con éxito y reexporta el HTML congelado', async () => {
+  it('solo guarda la instantánea tras exportar con éxito y usa el idioma actual al reexportar', async () => {
     db.saveImport(file(), false);
     const reportId = db.listTrackingReports()[0].id;
     const write = async () => 2;
@@ -121,11 +122,12 @@ describe('entregas e informes protegidos', () => {
     expect(await issueTrackingReport(db, reportId, async () => '/tmp', async (_data, _path, html) => { captured.push(html); return 2; })).toBe(2);
     db.saveLanguage('en');
     expect(await issueTrackingReport(db, reportId, async () => '/tmp', async (data, _path, html) => {
-      expect(data.language).toBe('es');
+      expect(data.language).toBe('en');
+      expect(html).not.toEqual(captured[0]);
       captured.push(html);
       return 2;
     })).toBe(2);
-    expect(captured[1]).toEqual(captured[0]);
+    expect(captured[1]).not.toEqual(captured[0]);
   });
 
   it('reconstruye informes antiguos sin atribuirles identidad exacta con el PDF original', () => {

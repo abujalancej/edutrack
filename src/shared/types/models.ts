@@ -71,6 +71,7 @@ export interface ImportedWorksheetSummary {
   gradedStudentNames: string[]; isBlocking: boolean; isStale: boolean;
 }
 export interface ImportedWorksheetDetail extends ImportedWorksheetSummary { payload: FullSeguimentExport }
+export interface ReportSubjectExclusion { reportId: number; subject: string }
 export interface TrackingReportsExport {
   format: 'edutrack-tracking-reports'; version: 1; generatedAt: string;
   language: AppLanguage; schoolLogo?: string; tutorSex?: TeacherSex;
@@ -88,7 +89,7 @@ export interface TrackingReportsExport {
 }
 export interface InitialState {
   profile: TeacherProfile; language: AppLanguage; schoolLogo: string; centerConfiguration: CenterConfiguration; courses: ConfiguredCourse[]; subjects: ConfiguredSubject[];
-  students: Student[]; worksheets: WorksheetSummary[]; trackingReports: TrackingReportSummary[]; imports: ImportedWorksheetSummary[]; tutorObservations: Record<string, string>;
+  students: Student[]; worksheets: WorksheetSummary[]; trackingReports: TrackingReportSummary[]; imports: ImportedWorksheetSummary[]; reportSubjectExclusions: ReportSubjectExclusion[]; tutorObservations: Record<string, string>;
 }
 export type ImportAnalysis =
   | { path: string; ok: true; data: FullSeguimentExport; duplicate: boolean }

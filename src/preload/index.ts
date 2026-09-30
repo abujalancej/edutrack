@@ -41,6 +41,7 @@ const api: FullSeguimentApi = {
   commitImport: data => ipcRenderer.invoke('import:commit', data),
   getImportedWorksheet: id => ipcRenderer.invoke('import:get', id),
   setImportedWorksheetBlocking: (id, isBlocking) => ipcRenderer.invoke('import:blocking', id, isBlocking),
+  setReportSubjectExcluded: (reportId, subject, excluded) => ipcRenderer.invoke('report-subject:excluded', reportId, subject, excluded),
   deleteImportedWorksheet: id => ipcRenderer.invoke('import:delete', id),
   saveTutorObservation: (reportId, studentId, observation) => ipcRenderer.invoke('tutor-observation:save', reportId, studentId, observation),
   copyTrackingReport: reportId => ipcRenderer.invoke('tracking-report:copy', reportId),

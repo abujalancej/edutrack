@@ -349,6 +349,27 @@ describe('AppDatabase', () => {
     expect(db.listImports(reportId).find(item => item.id === excluded.id)?.isBlocking).toBe(false);
   });
 
+  it('permite excluir una asignatura pendiente y la incluye sin notas en el informe', () => {
+    const student = db.addStudent('ESO_1', 'Pau Soler');
+    db.saveImport({
+      format: 'full-seguiment', version: 1, exportedAt: '2026-09-13T10:00:00.000Z',
+      teacher: { firstName: 'Marta', lastName: 'Serra' },
+      course: { level: 'ESO_1', name: '1r ESO' }, trimester: { id: 'T_1', name: '1r Trimestre' },
+      subject: { name: 'Llengua Castellana', gradeMode: 'NUMERIC' }, columns: [{ id: 'exam', name: 'Examen' }],
+      students: [{ name: student.fullName, values: { exam: '8' } }]
+    }, false);
+    const reportId = db.listTrackingReports()[0].id;
+
+    expect(db.setReportSubjectExcluded(reportId, 'Música', true)).toEqual({ reportId, subject: 'Música' });
+    expect(db.listReportSubjectExclusions()).toContainEqual({ reportId, subject: 'Música' });
+    const report = buildTrackingReports(db, reportId);
+    expect(report.subjects.map(subject => ({ name: subject.name, isExcluded: subject.isExcluded }))).toEqual([
+      { name: 'Llengua Castellana', isExcluded: false },
+      { name: 'Música', isExcluded: true }
+    ]);
+    expect(report.students[0].subjects.find(subject => subject.name === 'Música')).toMatchObject({ values: {}, observations: {} });
+  });
+
   it('mantiene las asignaturas optativas separadas en el informe', () => {
     const anna = db.addStudent('ESO_1', 'Anna');
     const pau = db.addStudent('ESO_1', 'Pau');

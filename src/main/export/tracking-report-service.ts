@@ -2,7 +2,7 @@ import { TRIMESTER_LABELS, isCourseLevel, isTrimester } from '../../shared/catal
 import type { ExportColumn, FullSeguimentExport, ImportedWorksheetDetail, TrackingReportsExport } from '../../shared/types/models';
 import type { AppDatabase } from '../database/database';
 
-type ResolvedSubject = { name: string; delivery: ImportedWorksheetDetail };
+type ResolvedSubject = { name: string; delivery: ImportedWorksheetDetail | null };
 
 const columnIdentity = (column: ExportColumn) => `${column.name.trim().toLocaleLowerCase()}|${column.kind ?? 'CONTINUOUS_ASSESSMENT'}`;
 
@@ -36,10 +36,11 @@ export function buildTrackingReports(db: AppDatabase, reportId: number, reconstr
   // Una optativa es una asignatura normal con un subconjunto de alumnado.
   // No se agrupan entregas ni se infiere una asignatura llamada «Optativa».
   const deliveryBySubject = new Map(imported.map(item => [item.subject, item] as const));
-  const orderedNames = [...new Set([...db.listSubjects(courseLevel).map(subject => subject.name), ...imported.map(item => item.subject)])];
-  const subjects: ResolvedSubject[] = orderedNames.flatMap(name => {
+  const excludedNames = new Set(db.listReportSubjectExclusions().filter(item => item.reportId === reportId).map(item => item.subject));
+  const orderedNames = [...new Set([...db.listSubjects(courseLevel).map(subject => subject.name), ...imported.map(item => item.subject), ...excludedNames])];
+  const subjects: ResolvedSubject[] = orderedNames.flatMap<ResolvedSubject>(name => {
     const delivery = deliveryBySubject.get(name);
-    return delivery ? [{ name, delivery }] : [];
+    return delivery ? [{ name, delivery }] : excludedNames.has(name) ? [{ name, delivery: null }] : [];
   });
 
   if (subjects.length === 0 && !reconstruct) throw new Error('NO_IMPORTED_DELIVERIES');
@@ -49,6 +50,7 @@ export function buildTrackingReports(db: AppDatabase, reportId: number, reconstr
   const students = reconstruct && roster.length === 0 ? db.listStudents(courseLevel).map(student => ({ id: student.id, name: student.fullName })) : roster;
   if (!reconstruct) {
     for (const subject of subjects) {
+      if (!subject.delivery) continue;
       const comparison = db.compareDelivery(subject.delivery.payload, roster);
       if (subject.delivery.isStale || !comparison.matches) throw new Error(`Entrega desactualizada (${subject.name}). Altas: ${comparison.missingInFile.join(', ') || 'ninguna'}; bajas: ${comparison.extraInFile.join(', ') || 'ninguna'}. Actualiza el listado y reexporta la entrega.`);
     }
@@ -68,17 +70,18 @@ export function buildTrackingReports(db: AppDatabase, reportId: number, reconstr
     subjects: subjects.map(subject => {
       return {
         name: subject.name,
-        teacher: subject.delivery.payload.teacher,
-        gradeMode: subject.delivery.payload.subject.gradeMode,
-        exportedAt: subject.delivery.payload.exportedAt,
-        columns: sourceReport ? markExistingColumns(subject.delivery.payload.columns, sourceColumnsBySubject.get(subject.name) ?? []) : subject.delivery.payload.columns,
-        isExcluded: !subject.delivery.isBlocking
+        teacher: subject.delivery?.payload.teacher ?? { firstName: '', lastName: '' },
+        gradeMode: subject.delivery?.payload.subject.gradeMode,
+        exportedAt: subject.delivery?.payload.exportedAt ?? '',
+        columns: subject.delivery ? (sourceReport ? markExistingColumns(subject.delivery.payload.columns, sourceColumnsBySubject.get(subject.name) ?? []) : subject.delivery.payload.columns) : [],
+        isExcluded: !subject.delivery || !subject.delivery.isBlocking
       };
     }),
     students: students.map(student => ({
       name: student.name,
       tutorObservation: tutorObservations[`${reportId}:${student.id}`] ?? '',
       subjects: subjects.flatMap(subject => {
+        if (!subject.delivery) return { name: subject.name, values: {}, observations: {} };
         const importedStudent = subject.delivery.payload.students.find(item => item.name === student.name);
         if (subject.delivery.payload.subject.isElective && importedStudent?.enabled === false) return [];
         if (!importedStudent && !reconstruct) throw new Error(`Falta ${student.name} en la entrega ${subject.name}. Actualiza el listado y reexporta la entrega.`);

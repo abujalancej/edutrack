@@ -1,6 +1,6 @@
 import type { CourseLevel, Trimester } from '../catalogs/catalogs';
 import type { AssessmentKind, GradeMode } from './models';
-import type { AppLanguage, CenterConfiguration, CenterRosterChange, CenterUpdatePreview, ConfiguredCourse, ConfiguredSubject, FullSeguimentExport, ImportedWorksheetDetail, ImportedWorksheetSummary, ImportAnalysis, InitialState, RosterAssignment, RosterFileAnalysis, Student, TeacherProfile, TrackingReportSummary, WorksheetDetail, WorksheetFileAnalysis, WorksheetSummary } from './models';
+import type { AppLanguage, CenterConfiguration, CenterRosterChange, CenterUpdatePreview, ConfiguredCourse, ConfiguredSubject, FullSeguimentExport, ImportedWorksheetDetail, ImportedWorksheetSummary, ImportAnalysis, InitialState, ReportSubjectExclusion, RosterAssignment, RosterFileAnalysis, Student, TeacherProfile, TrackingReportSummary, WorksheetDetail, WorksheetFileAnalysis, WorksheetSummary } from './models';
 
 export interface OperationResult { ok: boolean; code?: string; error?: string; replaced?: boolean; count?: number; worksheetId?: number; missingInFile?: string[]; extraInFile?: string[] }
 
@@ -44,6 +44,7 @@ export interface FullSeguimentApi {
   commitImport(data: FullSeguimentExport): Promise<OperationResult>;
   getImportedWorksheet(id: number): Promise<ImportedWorksheetDetail>;
   setImportedWorksheetBlocking(id: number, isBlocking: boolean): Promise<ImportedWorksheetSummary>;
+  setReportSubjectExcluded(reportId: number, subject: string, excluded: boolean): Promise<ReportSubjectExclusion | null>;
   deleteImportedWorksheet(id: number): Promise<void>;
   saveTutorObservation(reportId: number, studentId: number, observation: string): Promise<void>;
   copyTrackingReport(reportId: number): Promise<TrackingReportSummary>;

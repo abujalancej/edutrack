@@ -10,8 +10,12 @@ export async function issueTrackingReport(
   write: (report: TrackingReportsExport, directory: string, html: string[]) => Promise<number>
 ) {
   const snapshot = db.getReportSnapshot(reportId);
-  const data = snapshot?.payload ?? buildTrackingReports(db, reportId);
-  const html = snapshot?.html ?? data.students.map((_, index) => buildStudentReportHtml(data, index));
+  // The report data can be frozen, but its presentation always follows the
+  // language currently selected in the application.
+  const data = snapshot ? structuredClone(snapshot.payload) : buildTrackingReports(db, reportId);
+  const languageChanged = Boolean(snapshot && data.language !== db.getLanguage());
+  data.language = db.getLanguage();
+  const html = snapshot && !languageChanged ? snapshot.html : data.students.map((_, index) => buildStudentReportHtml(data, index));
   const directory = await chooseDirectory(data);
   if (!directory) return null;
   const count = await write(data, directory, html);

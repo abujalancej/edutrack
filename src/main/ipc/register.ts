@@ -187,7 +187,6 @@ export function registerIpc(db: AppDatabase) {
       const validation = validateImport(parsed);
       if (!validation.ok) return { path, ok: false, error: validation.error };
       if (!db.hasCourse(validation.data.course.level) || db.courseName(validation.data.course.level) !== validation.data.course.name || !db.hasSubject(validation.data.course.level, validation.data.subject.name)) return { path, ok: false, error: 'El curso o la asignatura del archivo no están configurados en este centro.' };
-      if (db.isLatestReportIssued(validation.data.course.level, validation.data.trimester.id)) return { path, ok: false, error: 'El informe ya está emitido. Copia el informe antes de importar nuevas entregas.' };
       const comparison = db.compareDelivery(validation.data);
       if (!comparison.matches) return { path, ok: false, error: deliveryRosterError(comparison), ...comparison };
       db.assertDeliveryApplicability(validation.data);
@@ -199,7 +198,6 @@ export function registerIpc(db: AppDatabase) {
     if (!valid.ok) return { ok: false, error: valid.error };
     const normalized = valid.data;
     if (!db.hasCourse(normalized.course.level) || db.courseName(normalized.course.level) !== normalized.course.name || !db.hasSubject(normalized.course.level, normalized.subject.name)) return { ok: false, error: 'El curso o la asignatura no están configurados.' };
-    if (db.isLatestReportIssued(normalized.course.level, normalized.trimester.id)) return { ok: false, error: 'El informe ya está emitido. Copia el informe antes de importar nuevas entregas.' };
     const comparison = db.compareDelivery(normalized);
     if (!comparison.matches) return { ok: false, error: deliveryRosterError(comparison), missingInFile: comparison.missingInFile, extraInFile: comparison.extraInFile };
     const replaced = db.hasImport(normalized);
@@ -210,6 +208,10 @@ export function registerIpc(db: AppDatabase) {
   ipcMain.handle('import:blocking', (_e, id, isBlocking) => {
     if (!Number.isInteger(id) || id <= 0 || typeof isBlocking !== 'boolean') throw new Error('Entrega no válida.');
     return db.setImportedWorksheetBlocking(id, isBlocking);
+  });
+  ipcMain.handle('report-subject:excluded', (_e, reportId, subject, excluded) => {
+    if (!Number.isInteger(reportId) || reportId <= 0 || typeof subject !== 'string' || !subject.trim() || typeof excluded !== 'boolean') throw new Error('Asignatura no válida.');
+    return db.setReportSubjectExcluded(reportId, subject, excluded);
   });
   ipcMain.handle('import:delete', (_e, id) => { if (!Number.isInteger(id) || id <= 0) throw new Error('Entrega no válida.'); db.deleteImportedWorksheet(id); });
   ipcMain.handle('tutor-observation:save', (_e, reportId, studentId, observation) => {

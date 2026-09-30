@@ -7,7 +7,7 @@ import { assessmentApplicability } from '../../shared/assessment/applicability';
 import { compareDeliveryRoster, deliveryRosterError } from '../import/delivery-roster';
 import { buildTrackingReports } from '../export/tracking-report-service';
 import { buildStudentReportHtml } from '../export/student-report-pdf-service';
-import type { AppLanguage, AssessmentKind, CenterConfiguration, CenterRosterChange, CenterRosterAnalysis, CenterUpdatePreview, ConfiguredCourse, ConfiguredSubject, CourseRosterAnalysis, FullSeguimentExport, GradeMode, ImportedWorksheetDetail, ImportedWorksheetSummary, InitialState, RosterAssignment, RosterStudentReference, Student, TeacherProfile, TrackingReportSummary, TrackingReportsExport, WorksheetChangeSummary, WorksheetDetail, WorksheetSummary } from '../../shared/types/models';
+import type { AppLanguage, AssessmentKind, CenterConfiguration, CenterRosterChange, CenterRosterAnalysis, CenterUpdatePreview, ConfiguredCourse, ConfiguredSubject, CourseRosterAnalysis, FullSeguimentExport, GradeMode, ImportedWorksheetDetail, ImportedWorksheetSummary, InitialState, ReportSubjectExclusion, RosterAssignment, RosterStudentReference, Student, TeacherProfile, TrackingReportSummary, TrackingReportsExport, WorksheetChangeSummary, WorksheetDetail, WorksheetSummary } from '../../shared/types/models';
 
 type Row = Record<string, any>;
 
@@ -154,6 +154,11 @@ export class AppDatabase {
         teacher_first_name TEXT NOT NULL, teacher_last_name TEXT NOT NULL, exported_at TEXT NOT NULL,
         imported_at TEXT NOT NULL, payload_json TEXT NOT NULL, is_elective INTEGER NOT NULL DEFAULT 0, is_blocking INTEGER NOT NULL DEFAULT 1, is_stale INTEGER NOT NULL DEFAULT 0,
         UNIQUE(report_id, subject)
+      );
+      CREATE TABLE IF NOT EXISTS report_subject_exclusions (
+        report_id INTEGER NOT NULL REFERENCES tracking_reports(id) ON DELETE CASCADE,
+        subject TEXT NOT NULL,
+        PRIMARY KEY (report_id, subject)
       );
       CREATE TABLE IF NOT EXISTS tutor_observations (
         report_id INTEGER NOT NULL REFERENCES tracking_reports(id) ON DELETE CASCADE,
@@ -359,12 +364,19 @@ export class AppDatabase {
     return observations;
   }
 
+  listReportSubjectExclusions(): ReportSubjectExclusion[] {
+    return (this.db.prepare('SELECT report_id, subject FROM report_subject_exclusions ORDER BY report_id, subject').all() as Row[])
+      .map(row => ({ reportId: Number(row.report_id), subject: String(row.subject) }));
+  }
+
   private latestMutableReport(reportId: number) {
     const report = this.db.prepare('SELECT id, course_level, trimester FROM tracking_reports WHERE id = ?').get(reportId) as Row | undefined;
     if (!report) throw new Error('No se ha encontrado el informe.');
     const latest = this.latestReport(report.course_level, report.trimester);
     if (!latest || Number(latest.id) !== reportId) throw new Error('READ_ONLY_REPORT');
-    if (this.getReportSnapshot(reportId)) throw new Error('READ_ONLY_REPORT');
+    // The current report remains editable after export. Its next export replaces
+    // the previous snapshot; only earlier report versions are immutable.
+    this.db.prepare('DELETE FROM report_snapshots WHERE report_id = ?').run(reportId);
     return report;
   }
 
@@ -1189,17 +1201,37 @@ export class AppDatabase {
       this.db.prepare(`INSERT INTO imported_worksheets(report_id, course_level, trimester, subject, teacher_first_name, teacher_last_name, exported_at, imported_at, payload_json, is_elective)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(...args);
     }
+    // An exclusion may have been recorded before the teaching delivery arrived.
+    this.db.prepare(`UPDATE imported_worksheets SET is_blocking = 0 WHERE report_id = ? AND subject = ?
+      AND EXISTS (SELECT 1 FROM report_subject_exclusions WHERE report_id = ? AND subject = ?)`)
+      .run(reportId, normalizedData.subject.name, reportId, normalizedData.subject.name);
     this.db.prepare('UPDATE tracking_reports SET updated_at = ? WHERE id = ?').run(now, reportId);
   }
 
   setImportedWorksheetBlocking(id: number, isBlocking: boolean) {
-    const row = this.db.prepare('SELECT report_id FROM imported_worksheets WHERE id = ?').get(id) as Row | undefined;
+    const row = this.db.prepare('SELECT report_id, subject FROM imported_worksheets WHERE id = ?').get(id) as Row | undefined;
     if (!row) throw new Error('No se ha encontrado la entrega importada.');
     this.latestMutableReport(Number(row.report_id));
     const now = this.now();
     this.db.prepare('UPDATE imported_worksheets SET is_blocking = ? WHERE id = ?').run(isBlocking ? 1 : 0, id);
+    if (isBlocking) this.db.prepare('DELETE FROM report_subject_exclusions WHERE report_id = ? AND subject = ?').run(row.report_id, row.subject);
     this.db.prepare('UPDATE tracking_reports SET updated_at = ? WHERE id = ?').run(now, row.report_id);
     return this.listImports(row.report_id).find(item => item.id === id)!;
+  }
+
+  setReportSubjectExcluded(reportId: number, subject: string, excluded: boolean): ReportSubjectExclusion | null {
+    const report = this.getTrackingReport(reportId);
+    this.latestMutableReport(reportId);
+    if (!this.hasSubject(report.courseLevel, subject)) throw new Error('La asignatura no está configurada para este curso.');
+    const imported = this.db.prepare('SELECT id FROM imported_worksheets WHERE report_id = ? AND subject = ?').get(reportId, subject) as Row | undefined;
+    if (imported) {
+      this.setImportedWorksheetBlocking(Number(imported.id), !excluded);
+      return excluded ? { reportId, subject } : null;
+    }
+    if (excluded) this.db.prepare('INSERT OR IGNORE INTO report_subject_exclusions(report_id, subject) VALUES (?, ?)').run(reportId, subject);
+    else this.db.prepare('DELETE FROM report_subject_exclusions WHERE report_id = ? AND subject = ?').run(reportId, subject);
+    this.db.prepare('UPDATE tracking_reports SET updated_at = ? WHERE id = ?').run(this.now(), reportId);
+    return excluded ? { reportId, subject } : null;
   }
 
   getImportedWorksheet(id: number): ImportedWorksheetDetail {
@@ -1235,6 +1267,8 @@ export class AppDatabase {
         SELECT ?, course_level, trimester, subject, teacher_first_name, teacher_last_name, exported_at, ?, payload_json, is_elective, is_blocking, CASE WHEN ? THEN 1 ELSE is_stale END FROM imported_worksheets WHERE report_id = ?`).run(newId, now, rosterIdentityChanged ? 1 : 0, reportId);
       this.db.prepare(`INSERT INTO tutor_observations(report_id, student_id, observation, updated_at)
         SELECT ?, student_id, observation, ? FROM tutor_observations WHERE report_id = ?`).run(newId, now, reportId);
+      this.db.prepare(`INSERT INTO report_subject_exclusions(report_id, subject)
+        SELECT ?, subject FROM report_subject_exclusions WHERE report_id = ?`).run(newId, reportId);
     });
     return this.getTrackingReport(newId);
   }
@@ -1249,6 +1283,6 @@ export class AppDatabase {
   }
 
   getInitialState(): InitialState {
-    return { profile: this.getProfile(), language: this.getLanguage(), schoolLogo: this.getSchoolLogo(), centerConfiguration: this.getCenterConfiguration(), courses: this.listCourses(), subjects: this.listSubjects(), students: this.listStudents(), worksheets: this.listWorksheets(), trackingReports: this.listTrackingReports(), imports: this.listImports(), tutorObservations: this.listTutorObservations() };
+    return { profile: this.getProfile(), language: this.getLanguage(), schoolLogo: this.getSchoolLogo(), centerConfiguration: this.getCenterConfiguration(), courses: this.listCourses(), subjects: this.listSubjects(), students: this.listStudents(), worksheets: this.listWorksheets(), trackingReports: this.listTrackingReports(), imports: this.listImports(), reportSubjectExclusions: this.listReportSubjectExclusions(), tutorObservations: this.listTutorObservations() };
   }
 }
