@@ -82,7 +82,7 @@ describe('descripciones de los perfiles', () => {
   it.each([
     ['es', 'Gestiona asignaturas.', 'Gestiona hojas de seguimiento.'],
     ['ca', 'Gestiona assignatures.', 'Gestiona fulls de seguiment.'],
-    ['en', 'Manage subjects.', 'Manage Student Progress Trackers.'],
+    ['en', 'Manage subjects.', 'Track student progress.'],
     ['eu', 'Kudeatu irakasgaiak.', 'Jarraipen fitxak kudeatu.'],
     ['gl', 'Xestiona materias.', 'Xestiona follas de seguimento.']
   ] as const)('usa mensajes breves en %s', (language, teacher, tutor) => {
