@@ -131,7 +131,7 @@ export function registerIpc(db: AppDatabase) {
   });
   ipcMain.handle('worksheet:delete', (_e, id) => db.deleteWorksheet(id));
   ipcMain.handle('worksheet:get', (_e, id) => db.getWorksheet(id));
-  ipcMain.handle('assessment:add', (_e, input) => db.addAssessment(input.worksheetId, input.kind, input.name, input.assessmentDate));
+  ipcMain.handle('assessment:add', (_e, input) => db.addAssessment(input.worksheetId, input.kind, input.name, input.assessmentDate, input.studentIds));
   ipcMain.handle('column:rename', (_e, id, name) => db.renameColumn(id, name));
   ipcMain.handle('assessment:update', (_e, id, input) => db.updateAssessment(id, input));
   ipcMain.handle('column:delete', (_e, id) => db.deleteColumn(id));

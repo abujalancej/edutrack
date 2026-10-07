@@ -169,6 +169,7 @@ export class AppDatabase {
       );
     `);
     const columnInfo = this.db.prepare('PRAGMA table_info(worksheet_columns)').all() as Row[];
+    if (!columnInfo.some(column => column.name === 'student_ids_json')) this.db.exec('ALTER TABLE worksheet_columns ADD COLUMN student_ids_json TEXT');
     if (!columnInfo.some(column => column.name === 'kind')) this.db.exec("ALTER TABLE worksheet_columns ADD COLUMN kind TEXT NOT NULL DEFAULT 'CONTINUOUS_ASSESSMENT'");
     if (!columnInfo.some(column => column.name === 'assessment_date')) this.db.exec("ALTER TABLE worksheet_columns ADD COLUMN assessment_date TEXT NOT NULL DEFAULT ''");
     const valueInfo = this.db.prepare('PRAGMA table_info(worksheet_values)').all() as Row[];
@@ -818,8 +819,22 @@ export class AppDatabase {
   });
 
   private worksheetApplicabilityOverrides(worksheetId: number): Map<string, 'APPLICABLE' | 'NOT_APPLICABLE'> {
-    return new Map((this.db.prepare('SELECT student_id, column_id, status FROM worksheet_applicability_overrides WHERE worksheet_id = ?').all(worksheetId) as Row[])
+    const overrides = new Map<string, 'APPLICABLE' | 'NOT_APPLICABLE'>((this.db.prepare('SELECT student_id, column_id, status FROM worksheet_applicability_overrides WHERE worksheet_id = ?').all(worksheetId) as Row[])
       .map(row => [`${row.student_id}:${row.column_id}`, row.status]));
+    const students = this.db.prepare('SELECT id FROM students').all() as Row[];
+    for (const column of this.db.prepare('SELECT id, student_ids_json FROM worksheet_columns WHERE worksheet_id = ? AND student_ids_json IS NOT NULL').all(worksheetId) as Row[]) {
+      const selected = new Set<number>(JSON.parse(column.student_ids_json));
+      for (const student of students) if (!selected.has(Number(student.id))) overrides.set(`${student.id}:${column.id}`, 'NOT_APPLICABLE');
+    }
+    return overrides;
+  }
+
+  private validateAssessmentStudents(worksheetId: number, studentIds?: number[] | null) {
+    if (studentIds == null) return;
+    const worksheet = this.db.prepare('SELECT course_level FROM worksheets WHERE id = ?').get(worksheetId) as Row | undefined;
+    if (!worksheet || !Array.isArray(studentIds) || !studentIds.length) throw new Error('INDIVIDUAL_STUDENTS_REQUIRED');
+    const allowed = new Set(this.listStudents(worksheet.course_level).map(student => student.id));
+    if (studentIds.some(id => !Number.isInteger(id) || !allowed.has(id)) || new Set(studentIds).size !== studentIds.length) throw new Error('INVALID_ASSESSMENT_STUDENTS');
   }
 
   private getWorksheetChanges(worksheetId: number, sourceWorksheetId: number): WorksheetChangeSummary {
@@ -896,10 +911,11 @@ export class AppDatabase {
           .run(normalized.course.level, targetTrimester, normalized.subject.name, gradeMode, isElective ? 1 : 0, now, now, this.rosterSnapshot(normalized.course.level));
         worksheetId = Number(result.lastInsertRowid);
       }
-      const insertColumn = this.db.prepare('INSERT INTO worksheet_columns(worksheet_id, export_id, name, kind, assessment_date, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
+      const insertColumn = this.db.prepare('INSERT INTO worksheet_columns(worksheet_id, export_id, name, kind, assessment_date, sort_order, student_ids_json) VALUES (?, ?, ?, ?, ?, ?, ?)');
       const columnIds = new Map<string, number>();
       normalized.columns.forEach((column, index) => {
-        const inserted = insertColumn.run(worksheetId, column.id, column.name.trim(), column.kind ?? 'CONTINUOUS_ASSESSMENT', column.assessmentDate ?? '', index);
+        const individualIds = column.isIndividual ? importedStudentIds.filter(({ student }) => student.applicability?.[column.id] === 'APPLICABLE').map(({ id }) => id) : null;
+        const inserted = insertColumn.run(worksheetId, column.id, column.name.trim(), column.kind ?? 'CONTINUOUS_ASSESSMENT', column.assessmentDate ?? '', index, individualIds === null ? null : JSON.stringify(individualIds));
         columnIds.set(column.id, Number(inserted.lastInsertRowid));
       });
       const disableStudent = this.db.prepare('INSERT INTO worksheet_disabled_students(worksheet_id, student_id) VALUES (?, ?)');
@@ -934,9 +950,9 @@ export class AppDatabase {
       const result = this.db.prepare('INSERT INTO worksheets(course_level, trimester, subject, grade_mode, is_elective, created_at, updated_at, copied_from_id, roster_snapshot_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .run(source.course_level, trimester, source.subject, source.grade_mode, source.is_elective, now, now, worksheetId, this.rosterSnapshot(source.course_level));
       newId = Number(result.lastInsertRowid);
-      const insertColumn = this.db.prepare('INSERT INTO worksheet_columns(worksheet_id, export_id, name, kind, assessment_date, sort_order, source_column_id) VALUES (?, ?, ?, ?, ?, ?, ?)');
-      const sourceColumns = this.db.prepare('SELECT id, name, kind, sort_order FROM worksheet_columns WHERE worksheet_id = ? ORDER BY sort_order, id').all(worksheetId) as Row[];
-      sourceColumns.forEach(column => insertColumn.run(newId, `col_${randomUUID()}`, column.name, column.kind, '', column.sort_order, column.id));
+      const insertColumn = this.db.prepare('INSERT INTO worksheet_columns(worksheet_id, export_id, name, kind, assessment_date, sort_order, source_column_id, student_ids_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+      const sourceColumns = this.db.prepare('SELECT id, name, kind, sort_order, student_ids_json FROM worksheet_columns WHERE worksheet_id = ? ORDER BY sort_order, id').all(worksheetId) as Row[];
+      sourceColumns.forEach(column => insertColumn.run(newId, `col_${randomUUID()}`, column.name, column.kind, '', column.sort_order, column.id, column.student_ids_json));
       if (source.is_elective) {
         this.db.prepare('INSERT INTO worksheet_disabled_students(worksheet_id, student_id) SELECT ?, student_id FROM worksheet_disabled_students WHERE worksheet_id = ?').run(newId, worksheetId);
       }
@@ -950,7 +966,7 @@ export class AppDatabase {
     const worksheet = this.db.prepare('SELECT * FROM worksheets WHERE id = ?').get(id) as Row | undefined;
     if (!worksheet) throw new Error('No se ha encontrado la hoja.');
     const columns = (this.db.prepare('SELECT * FROM worksheet_columns WHERE worksheet_id = ? ORDER BY sort_order, id').all(id) as Row[])
-      .map(row => ({ id: row.id, worksheetId: row.worksheet_id, exportId: row.export_id, name: row.name, kind: row.kind ?? 'CONTINUOUS_ASSESSMENT', assessmentDate: row.assessment_date ?? '', sortOrder: row.sort_order, sourceColumnId: row.source_column_id === null || row.source_column_id === undefined ? undefined : Number(row.source_column_id) }));
+      .map(row => ({ id: row.id, worksheetId: row.worksheet_id, exportId: row.export_id, name: row.name, kind: row.kind ?? 'CONTINUOUS_ASSESSMENT', assessmentDate: row.assessment_date ?? '', sortOrder: row.sort_order, studentIds: row.student_ids_json == null ? undefined : JSON.parse(row.student_ids_json) as number[], sourceColumnId: row.source_column_id === null || row.source_column_id === undefined ? undefined : Number(row.source_column_id) }));
     const values: Record<string, string> = {};
     const observations: Record<string, string> = {};
     for (const row of this.db.prepare('SELECT student_id, column_id, value, observation FROM worksheet_values WHERE worksheet_id = ?').all(id) as Row[]) {
@@ -989,24 +1005,27 @@ export class AppDatabase {
     return this.getWorksheet(worksheetId);
   }
 
-  addAssessment(worksheetId: number, kind: AssessmentKind, name: string, assessmentDate: string): WorksheetDetail {
+  addAssessment(worksheetId: number, kind: AssessmentKind, name: string, assessmentDate: string, studentIds?: number[] | null): WorksheetDetail {
+    this.validateAssessmentStudents(worksheetId, studentIds);
     const clean = name.trim();
     if (!clean) throw new Error('El nombre de la columna no puede estar vacío.');
     if (!['EXAM', 'CONTINUOUS_ASSESSMENT'].includes(kind)) throw new Error('Tipo de evaluación no válido.');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(assessmentDate)) throw new Error('La fecha de realización no es válida.');
     const next = (this.db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 n FROM worksheet_columns WHERE worksheet_id = ?').get(worksheetId) as Row).n;
-    this.db.prepare('INSERT INTO worksheet_columns(worksheet_id, export_id, name, kind, assessment_date, sort_order) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(worksheetId, `col_${randomUUID()}`, clean, kind, assessmentDate, next);
+    this.db.prepare('INSERT INTO worksheet_columns(worksheet_id, export_id, name, kind, assessment_date, sort_order, student_ids_json) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(worksheetId, `col_${randomUUID()}`, clean, kind, assessmentDate, next, studentIds == null ? null : JSON.stringify(studentIds));
     this.touch(worksheetId);
     return this.getWorksheet(worksheetId);
   }
 
-  updateAssessment(id: number, input: { kind: AssessmentKind; name: string; assessmentDate: string }) {
+  updateAssessment(id: number, input: { kind: AssessmentKind; name: string; assessmentDate: string; studentIds?: number[] | null }) {
     const clean = input.name.trim();
     if (!clean || !['EXAM', 'CONTINUOUS_ASSESSMENT'].includes(input.kind) || !/^\d{4}-\d{2}-\d{2}$/.test(input.assessmentDate)) throw new Error('Datos de evaluación no válidos.');
     const row = this.db.prepare('SELECT worksheet_id FROM worksheet_columns WHERE id = ?').get(id) as Row | undefined;
     if (!row) throw new Error('No se ha encontrado la evaluación.');
+    this.validateAssessmentStudents(row.worksheet_id, input.studentIds);
     this.db.prepare('UPDATE worksheet_columns SET name = ?, kind = ?, assessment_date = ? WHERE id = ?').run(clean, input.kind, input.assessmentDate, id);
+    if (input.studentIds !== undefined) this.db.prepare('UPDATE worksheet_columns SET student_ids_json = ? WHERE id = ?').run(input.studentIds === null ? null : JSON.stringify(input.studentIds), id);
     this.db.prepare('DELETE FROM worksheet_applicability_overrides WHERE column_id = ?').run(id);
     this.touch(row.worksheet_id);
   }

@@ -1,3 +1,4 @@
+import { APP_VERSION } from '../../shared/version';
 import { BrowserWindow } from 'electron';
 import { access, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -100,7 +101,8 @@ export function buildStudentReportHtml(report: TrackingReportsExport, studentInd
   const subjectSections = report.subjects.map(reportSubject => {
     const studentSubject = student.subjects.find(subject => subject.name === reportSubject.name);
     if (!studentSubject) return '';
-    const columns = reportSubject.columns;
+    const columns = reportSubject.columns.filter(column => !column.isIndividual || studentSubject.applicability?.[column.id] === 'APPLICABLE');
+    if (!reportSubject.isExcluded && !columns.length && reportSubject.columns.some(column => column.isIndividual)) return '';
     const displayedName = reportSubject.name;
     const rows = reportSubject.isExcluded ? `<tr><td class="subject-no-grades" colspan="5">${escapeHtml(labels.noGrades)}</td></tr>` : columns.map(column => {
       const notApplicable = studentSubject.applicability?.[column.id] === 'NOT_APPLICABLE';
@@ -140,7 +142,7 @@ export function buildStudentReportHtml(report: TrackingReportsExport, studentInd
   </body></html>`;
 }
 
-const pdfFooterTemplate = '<div style="width:100%;font-family:Segoe UI,Arial,sans-serif;font-size:8px;color:#89948f;border-top:1px solid #dfe6e3;padding:6px 13mm 0;display:flex;justify-content:space-between"><span>EduTrack v1.1.0</span><span><span class="pageNumber"></span>/<span class="totalPages"></span></span></div>';
+const pdfFooterTemplate = `<div style="width:100%;font-family:Segoe UI,Arial,sans-serif;font-size:8px;color:#89948f;border-top:1px solid #dfe6e3;padding:6px 13mm 0;display:flex;justify-content:space-between"><span>EduTrack v${APP_VERSION}</span><span><span class="pageNumber"></span>/<span class="totalPages"></span></span></div>`;
 
 export function studentReportFilename(report: TrackingReportsExport, studentName: string) {
   const safeStudent = studentName.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'alumno';

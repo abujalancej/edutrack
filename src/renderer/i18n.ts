@@ -10,6 +10,15 @@ export const setActiveLanguage = (language: AppLanguage) => { activeLanguage = l
 export const setActiveTeacherSex = (sex?: TeacherSex) => { activeTeacherSex = sex === 'FEMALE' ? 'FEMALE' : 'MALE'; };
 export const getActiveLanguage = () => activeLanguage;
 
+const individualAssessmentLabels: Record<AppLanguage, { individual: string; countsAs: string; students: string; help: string; required: string }> = {
+  es: { individual: 'Prueba individual', countsAs: 'Cuenta como', students: 'Alumnos que deben hacerla', help: 'Solo cuenta para los alumnos seleccionados. No aparece en los informes del resto.', required: 'Selecciona al menos un alumno.' },
+  ca: { individual: 'Prova individual', countsAs: 'Compta com a', students: 'Alumnes que l’han de fer', help: 'Només compta per als alumnes seleccionats. No apareix als informes de la resta.', required: 'Selecciona almenys un alumne.' },
+  en: { individual: 'Individual assessment', countsAs: 'Counts as', students: 'Students taking this assessment', help: 'Only counts for selected students. It does not appear in other students’ reports.', required: 'Select at least one student.' },
+  eu: { individual: 'Banakako proba', countsAs: 'Honela zenbatzen da', students: 'Proba egin behar duten ikasleak', help: 'Hautatutako ikasleentzat bakarrik balio du. Ez da gainerakoen txostenetan agertzen.', required: 'Hautatu gutxienez ikasle bat.' },
+  gl: { individual: 'Proba individual', countsAs: 'Conta como', students: 'Alumnos que deben facela', help: 'Só conta para os alumnos seleccionados. Non aparece nos informes do resto.', required: 'Selecciona polo menos un alumno.' }
+};
+export const individualAssessmentUi = (key: keyof typeof individualAssessmentLabels.es) => individualAssessmentLabels[activeLanguage][key];
+
 const worksheetStatusLabels: Record<AppLanguage, { historical: string; notApplicable: string; ambiguousNames: string }> = {
   es: { historical: 'Histórico', notApplicable: 'No aplicable', ambiguousNames: 'No se puede exportar: hay alumnos con el mismo nombre en este curso.' },
   ca: { historical: 'Històric', notApplicable: 'No aplicable', ambiguousNames: 'No es pot exportar: hi ha alumnes amb el mateix nom en aquest curs.' },
@@ -422,3 +431,14 @@ export const reportUi = (sequence:number) => reportLabels[activeLanguage][sequen
 export const sheetUi = (course:CourseLevel,trimester:Trimester,subject:string) => `${courseUi(course)} · ${trimesterUi(trimester)} · ${subjectUi(subject)}`;
 
 export function subjectUi(subject:string){ return subject; }
+
+export const deliveryGeneratedLabel = (language: AppLanguage = activeLanguage) => ({
+  es: 'Generado', ca: 'Generat', en: 'Generated', eu: 'Sortua', gl: 'Xerado'
+}[language]);
+export const reportGenerationLabel = (index = 0, language: AppLanguage = activeLanguage) => ({
+  es: ['Generando los informes de seguimiento…', 'Esto puede tardar unos segundos…', 'Si hay muchos alumnos, la generación puede tardar un poco más…', 'Seguimos generando los documentos. Espera un momento…'],
+  ca: ['Generant els fulls de seguiment…', 'Això pot trigar uns segons…', 'Si hi ha molts alumnes, la generació pot trigar una mica més…', 'Continuem generant els documents. Espera un moment…'],
+  en: ['Generating student progress reports…', 'This may take a few seconds…', 'For larger groups, generation may take a little longer…', 'Still generating the documents. Please wait…'],
+  eu: ['Jarraipen-txostenak sortzen…', 'Honek segundo batzuk behar izan ditzake…', 'Ikasle asko badaude, denbora gehiago behar izan daiteke…', 'Dokumentuak sortzen jarraitzen dugu. Itxaron pixka bat…'],
+  gl: ['Xerando os informes de seguimento…', 'Isto pode tardar uns segundos…', 'Se hai moitos alumnos, a xeración pode tardar un pouco máis…', 'Seguimos xerando os documentos. Agarda un momento…']
+}[language][index % 4]);

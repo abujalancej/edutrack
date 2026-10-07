@@ -17,13 +17,14 @@ export function buildExport(db: AppDatabase, worksheetId: number): FullSeguiment
     names.add(name);
   }
   const version = worksheet.students.some(student => db.listStudentEnrollments(student.id).some(period => period.startedOn !== null) || !worksheet.activeStudentIds.includes(student.id))
+    || worksheet.columns.some(column => column.studentIds !== undefined)
     || enabledStudents.some(student => worksheet.columns.some(column => worksheet.applicability[`${student.id}:${column.id}`] === 'NOT_APPLICABLE')) ? 2 : 1;
   return {
     format: 'full-seguiment', version, exportedAt: new Date().toISOString(), teacher,
     course: { level: worksheet.courseLevel, name: db.courseName(worksheet.courseLevel) },
     trimester: { id: worksheet.trimester, name: TRIMESTER_LABELS[worksheet.trimester] },
     subject: { name: worksheet.subject, gradeMode: worksheet.gradeMode, isElective: worksheet.isElective },
-    columns: worksheet.columns.map(column => ({ id: column.exportId, name: column.name, kind: column.kind, assessmentDate: column.assessmentDate })),
+    columns: worksheet.columns.map(column => ({ id: column.exportId, name: column.name, kind: column.kind, assessmentDate: column.assessmentDate, ...(column.studentIds !== undefined ? { isIndividual: true } : {}) })),
     students: worksheet.students.map(student => ({
       name: student.fullName,
       enabled: !worksheet.disabledStudentIds.includes(student.id),

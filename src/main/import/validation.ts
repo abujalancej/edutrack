@@ -28,6 +28,8 @@ export function validateImport(value: unknown): ValidationResult {
     if (column.kind !== undefined && column.kind !== 'EXAM' && column.kind !== 'CONTINUOUS_ASSESSMENT') return invalid('Hay una columna con un tipo de evaluación inválido.');
     if (column.assessmentDate !== undefined && (typeof column.assessmentDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(column.assessmentDate))) return invalid('Hay una columna con una fecha inválida.');
     columnIds.add(column.id);
+    if (column.isIndividual !== undefined && typeof column.isIndividual !== 'boolean') return invalid('El indicador de prueba individual no es válido.');
+    if (column.isIndividual === true && value.version !== 2) return invalid('Las pruebas individuales requieren aplicabilidad por alumno.');
   }
   if (!Array.isArray(value.students) || value.students.length === 0) return invalid('El archivo no contiene alumnos.');
   const studentNames = new Set<string>();

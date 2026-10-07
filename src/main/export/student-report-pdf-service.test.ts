@@ -24,6 +24,22 @@ const report: TrackingReportsExport = {
 };
 
 describe('student report PDF content', () => {
+  it('omite la prueba individual y sus observaciones del informe de quien no debe hacerla', () => {
+    const individual = structuredClone(report);
+    individual.subjects[0].columns.push({ id: 'individual', name: 'Prueba exclusiva', kind: 'EXAM', assessmentDate: '2026-09-13', isIndividual: true });
+    individual.students[0].subjects[0].applicability = { individual: 'APPLICABLE' };
+    individual.students[0].subjects[0].values.individual = '9';
+    individual.students[1].subjects[0].applicability = { individual: 'NOT_APPLICABLE' };
+    individual.students[1].subjects[0].observations.individual = 'Observación exclusiva';
+    expect(buildStudentReportHtml(individual, 0)).toContain('Prueba exclusiva');
+    const otherHtml = buildStudentReportHtml(individual, 1);
+    expect(otherHtml).not.toContain('Prueba exclusiva');
+    expect(otherHtml).not.toContain('Observación exclusiva');
+    expect(otherHtml).not.toContain('N/A');
+    expect(otherHtml).toContain('Examen 1');
+    individual.subjects[0].columns = individual.subjects[0].columns.filter(column => column.isIndividual);
+    expect(buildStudentReportHtml(individual, 1)).not.toContain('<section class="subject-block">');
+  });
   it('genera un documento aislado con asignaturas, fechas, notas y observaciones del alumno', () => {
     const html = buildStudentReportHtml(report, 0);
     expect(html).toContain('Anna García');

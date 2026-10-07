@@ -29,9 +29,9 @@ export interface FullSeguimentApi {
   configureElectiveStudents(worksheetId: number, enabledStudentIds: number[]): Promise<WorksheetDetail>;
   deleteWorksheet(id: number): Promise<void>;
   getWorksheet(id: number): Promise<WorksheetDetail>;
-  addAssessment(input: { worksheetId: number; kind: AssessmentKind; name: string; assessmentDate: string }): Promise<WorksheetDetail>;
+  addAssessment(input: { worksheetId: number; kind: AssessmentKind; name: string; assessmentDate: string; studentIds?: number[] | null }): Promise<WorksheetDetail>;
   renameColumn(id: number, name: string): Promise<void>;
-  updateAssessment(id: number, input: { kind: AssessmentKind; name: string; assessmentDate: string }): Promise<void>;
+  updateAssessment(id: number, input: { kind: AssessmentKind; name: string; assessmentDate: string; studentIds?: number[] | null }): Promise<void>;
   deleteColumn(id: number): Promise<void>;
   saveCell(worksheetId: number, studentId: number, columnId: number, field: 'grade' | 'observation', value: string): Promise<void>;
   clearAssessmentValues(worksheetId: number, columnId: number): Promise<void>;

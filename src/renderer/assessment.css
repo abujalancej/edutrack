@@ -142,6 +142,16 @@ body { min-width: 720px; }
 .elective-student-list input { width: 16px; height: 16px; margin: 0; accent-color: var(--green); }
 .elective-student-list .student-order { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #edf2ef; color: #71807b; font-size: 11px; }
 .elective-student-list strong { font-size: 14px; }
+
+.assessment-modal { width: min(540px, calc(100vw - 40px)); max-height: calc(100dvh - 40px); display: flex; flex-direction: column; padding: 22px; }
+.assessment-modal > .modal-body { min-height: 0; overflow-y: auto; gap: 10px; margin-top: 16px; }
+.assessment-modal .individual-assessment-help { margin: 0; font-size: 11px; line-height: 1.4; color: var(--muted); }
+.assessment-modal .individual-assessment-students { min-width: 0; margin: 0; padding: 0; border: 0; }
+.assessment-modal .individual-assessment-students legend { padding: 0 0 7px; font-size: 11px; font-weight: 700; color: #51605c; }
+.assessment-modal .elective-student-list { max-height: min(180px, 25dvh); overflow-y: auto; overscroll-behavior: contain; }
+.assessment-modal .elective-student-list label { grid-template-columns: 18px minmax(0, 1fr); min-height: 34px; padding: 6px 10px; gap: 8px; }
+.assessment-modal .elective-student-list strong { font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
+.assessment-modal .modal-actions { position: sticky; bottom: 0; background: #fff; padding-top: 8px; margin-top: 0; }
 .imported-delivery-table th > span, .imported-delivery-table th > small { display: block; }
 .imported-delivery-table th > small { margin-top: 3px; color: #75847f; font-size: 11px; font-weight: 500; }
 .imported-result-cell { min-height: 66px; padding: 8px 10px; display: grid; grid-template-columns: 48px minmax(110px, 1fr); align-items: center; gap: 9px; }
@@ -260,9 +270,9 @@ body { min-width: 720px; }
 .subject-status-list small { grid-column: 2; grid-row: 2; align-self: start; line-height: 1.2; }
 .delivery-excluded-label { display: inline-block; margin-left: 7px; padding: 2px 6px; border-radius: 999px; color: #687570; background: #f0f2f1; font-size: 10px; font-weight: 700; line-height: 1.2; }
 .subject-status-list button.received .status-icon { background: #dff3e9; color: #187458; box-shadow: inset 0 0 0 1px #acd8c6; }
-.subject-status-list button.subject-status-main.excluded .status-icon { background: #f0f2f1; color: #687570; box-shadow: inset 0 0 0 1px #d7dfdb; }
+.subject-status-list button.subject-status-main.excluded .status-icon { background: #fff0cc; color: #b77900; box-shadow: inset 0 0 0 1px #e4b35b; }
 .subject-status-list button.partial .status-icon { background: #fff0d6; color: #91691e; box-shadow: inset 0 0 0 1px #ead19a; }
-.subject-status-list button:not(.received):not(.partial) .status-icon { background: #fbe8e7; color: #b44747; box-shadow: inset 0 0 0 1px #edc3c0; }
+.subject-status-list button:not(.received):not(.partial):not(.excluded) .status-icon { background: #fbe8e7; color: #b44747; box-shadow: inset 0 0 0 1px #edc3c0; }
 .subject-status-list button:not(.received) strong { color: #52635e; }
 .subject-status-item { min-height: 62px; display: grid; grid-template-columns: minmax(0, 1fr) 40px 40px 40px; align-items: center; padding-right: 8px; border-bottom: 1px solid #edf0ee; }
 .subject-status-item:nth-child(odd) { border-right: 1px solid #edf0ee; }
@@ -273,7 +283,7 @@ body { min-width: 720px; }
 .subject-status-list .delivery-view:hover { background: #edf2ef; color: var(--green-dark); }
 .subject-status-list .delivery-blocking-toggle.is-blocking { color: var(--green); }
 .subject-status-list .delivery-blocking-toggle.is-blocking:hover { background: #e4f4ed; color: var(--green-dark); }
-.subject-status-list .delivery-blocking-toggle.is-excluded { color: #8b9692; }
+.subject-status-list .delivery-blocking-toggle.is-excluded { color: #8b9692; background: transparent; }
 .subject-status-list .delivery-blocking-toggle.is-excluded:hover { background: #f0f2f1; color: #596762; }
 .subject-status-list .delivery-delete { margin-left: 2px; color: #83908c; }
 .subject-status-list .delivery-view:disabled, .subject-status-list .delivery-delete:disabled { background: transparent; color: #c8cfcc; cursor: not-allowed; }
@@ -350,7 +360,7 @@ body { min-width: 720px; }
 .assessment-table .row-incomplete .student-name { background: #fffcf5; }
 .assessment-table .spreadsheet-cell { position: relative; user-select: none; }
 .assessment-table .spreadsheet-cell:hover::after { content: ''; position: absolute; inset: 0; z-index: 2; box-shadow: inset 0 0 0 1px #91afc1; pointer-events: none; }
-.assessment-table .spreadsheet-cell.cell-selected { box-shadow: inset 0 0 0 2px #7f9fb2; }
+.assessment-table .spreadsheet-cell.cell-selected::after { content: ''; position: absolute; inset: 0; z-index: 2; box-shadow: inset 0 0 0 2px #2479c4; pointer-events: none; }
 /* Selection is an outline only: it must never replace a grade's semantic colour. */
 .assessment-table .spreadsheet-cell.cell-selected input, .assessment-table .spreadsheet-cell.cell-selected textarea { box-shadow: none; }
 /* These semantic colours take precedence over selection and incomplete-cell tints. */
@@ -496,3 +506,26 @@ button, input, select, textarea { font-size: 14px; }
 .sidebar-data-status { width: 22px; height: 22px; margin-left: auto; border-radius: 50%; display: grid; place-items: center; font-style: normal; }
 .sidebar-data-status.complete { background: #dff3e9; color: #1d775b; }
 .sidebar-data-status.incomplete { background: #f8dfdd; color: #a13f3f; }
+
+.tutor-observation-table .spreadsheet-cell { position: relative; user-select: none; }
+.assessment-table .spreadsheet-cell input, .assessment-table .spreadsheet-cell textarea, .tutor-observation-table .spreadsheet-cell textarea { user-select: text; }
+.tutor-observation-table .spreadsheet-cell.cell-selected::after { content: ''; position: absolute; inset: 0; z-index: 2; box-shadow: inset 0 0 0 2px #2479c4; pointer-events: none; }
+.tutor-observation-table-wrap { outline: 0; }
+.report-generation-spinner { display: inline-block; flex: 0 0 auto; width: 19px; height: 19px; border: 3px solid #16705e; border-top-color: #f2b84b; border-right-color: #f2b84b; border-radius: 50%; animation: spin .8s linear infinite; }
+button[aria-busy="true"] { opacity: 1; cursor: progress; }
+.subject-status-item.excluded { background: #f7f8f7; }
+.subject-status-item.excluded .subject-status-main strong { color: #7b8782; }
+.subject-status-item.excluded .subject-status-main small { color: #8b9691; }
+.delivery-generated-date { display: block; margin-top: 4px; font-size: 10px; font-weight: 400; }
+
+.subject-status-list { grid-auto-rows: 1fr; }
+.subject-status-list .subject-status-item { min-height: 78px; }
+.subject-status-list button.subject-status-main { height: 100%; padding-top: 8px; padding-bottom: 8px; grid-template-rows: max-content max-content; align-content: center; min-width: 0; row-gap: 3px; }
+.subject-status-list .subject-status-main strong { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.subject-status-list .subject-status-main small { min-width: 0; white-space: normal; line-height: 1.5; }
+.delivery-teacher-name { display: block; overflow-wrap: anywhere; }
+.delivery-generated-date { line-height: 1.5; white-space: normal; }
+
+.report-generation-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; background: #eef3f0b8; backdrop-filter: blur(7px); cursor: progress; outline: none; }
+.report-generation-overlay .report-generation-spinner { width: 66px; height: 66px; border-width: 6px; box-shadow: 0 5px 22px #163a3315; }
+.report-generation-overlay p { margin: 0; min-height: 48px; max-width: 460px; padding: 0 20px; text-align: center; line-height: 1.6; color: var(--green-dark); font-size: 15px; font-weight: 600; }

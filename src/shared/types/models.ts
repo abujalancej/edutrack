@@ -40,7 +40,7 @@ export interface CenterUpdatePreview {
 }
 export interface WorksheetChangeSummary { addedStudents: string[]; removedStudents: string[]; addedAssessments: string[] }
 export interface WorksheetSummary { id: number; courseLevel: CourseLevel; trimester: Trimester; subject: string; gradeMode: GradeMode; isElective: boolean; createdAt: string; updatedAt: string; isComplete: boolean; examCount: number; continuousAssessmentCount: number; copiedFromId?: number; changeSummary?: WorksheetChangeSummary }
-export interface WorksheetColumn { id: number; worksheetId: number; exportId: string; name: string; kind: AssessmentKind; assessmentDate: string; sortOrder: number; sourceColumnId?: number }
+export interface WorksheetColumn { id: number; worksheetId: number; exportId: string; name: string; kind: AssessmentKind; assessmentDate: string; sortOrder: number; sourceColumnId?: number; studentIds?: number[] }
 export interface WorksheetDetail extends WorksheetSummary {
   students: Student[];
   activeStudentIds: number[];
@@ -50,7 +50,7 @@ export interface WorksheetDetail extends WorksheetSummary {
   applicability: Record<string, AssessmentApplicability>;
   disabledStudentIds: number[];
 }
-export interface ExportColumn { id: string; name: string; kind?: AssessmentKind; assessmentDate?: string; isExisting?: boolean }
+export interface ExportColumn { id: string; name: string; kind?: AssessmentKind; assessmentDate?: string; isExisting?: boolean; isIndividual?: boolean }
 export interface ExportStudent { name: string; enabled?: boolean; enrolled?: boolean; values: Record<string, string>; observations?: Record<string, string>; applicability?: Record<string, Exclude<AssessmentApplicability, 'UNRESOLVED'>> }
 export interface FullSeguimentExport {
   format: 'full-seguiment'; version: 1 | 2; exportedAt: string;
