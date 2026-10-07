@@ -1,4 +1,6 @@
-# EduTrack
+# EduTrack 1.2.0
+
+[Changelog](CHANGELOG.md)
 
 [English](README.md) · **Español** · [Català](README.ca.md)
 
