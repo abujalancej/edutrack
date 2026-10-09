@@ -29,6 +29,40 @@ describe('entregas e informes protegidos', () => {
   beforeEach(() => { db = new AppDatabase(':memory:'); db.replaceCenterData(center, DEFAULT_CENTER_CONFIGURATION); });
   afterEach(() => db.close());
 
+  it('permite borrar la única hoja emitida y limpia sus datos para volver a importar', () => {
+    db.saveImport(file(), false);
+    const reportId = db.listTrackingReports()[0].id;
+    db.saveTutorObservation(reportId, db.listStudents('ESO_1')[0].id, 'Observación de tutoría');
+    const payload = buildTrackingReports(db, reportId);
+    db.saveIssuedReportSnapshot(reportId, payload, payload.students.map((_, index) => buildStudentReportHtml(payload, index)));
+    expect(db.listTrackingReports()[0].snapshotOrigin).toBe('issued');
+
+    db.deleteTrackingReport(reportId);
+
+    expect(db.listTrackingReports()).toEqual([]);
+    expect(db.getReportSnapshot(reportId)).toBeNull();
+    expect(db.listImports()).toEqual([]);
+    expect(db.listTutorObservations()).toEqual({});
+    expect(db.listStudents('ESO_1')).toHaveLength(2);
+    db.saveImport(file(), false);
+    expect(db.listTrackingReports()).toHaveLength(1);
+    expect(db.listTrackingReports()[0].sequence).toBe(1);
+  });
+
+  it('permite borrar una copia y después la última hoja emitida que queda', () => {
+    db.saveImport(file(), false);
+    const firstId = db.listTrackingReports()[0].id;
+    const payload = buildTrackingReports(db, firstId);
+    db.saveIssuedReportSnapshot(firstId, payload, payload.students.map((_, index) => buildStudentReportHtml(payload, index)));
+    const second = db.copyTrackingReport(firstId);
+    expect(() => db.deleteTrackingReport(firstId)).toThrow('ONLY_LATEST_REPORT_CAN_BE_DELETED');
+    db.deleteTrackingReport(second.id);
+    expect(db.listTrackingReports()).toHaveLength(1);
+    expect(() => db.deleteTrackingReport(firstId)).not.toThrow();
+    expect(db.listTrackingReports()).toEqual([]);
+    expect(db.getReportSnapshot(firstId)).toBeNull();
+  });
+
   it('lee v1 y v2 sin inventar notas y rechaza nombres ambiguos y listados distintos sin escribir', () => {
     db.saveImport(file(), false);
     expect(db.getImportedWorksheet(db.listImports()[0].id).payload.version).toBe(1);

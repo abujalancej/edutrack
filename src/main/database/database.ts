@@ -1297,7 +1297,6 @@ export class AppDatabase {
     if (!report) return;
     const latest = this.latestReport(report.course_level, report.trimester);
     if (!latest || Number(latest.id) !== reportId) throw new Error('ONLY_LATEST_REPORT_CAN_BE_DELETED');
-    if (this.getReportSnapshot(reportId)) throw new Error('ISSUED_REPORT_CANNOT_BE_DELETED');
     this.db.prepare('DELETE FROM tracking_reports WHERE id = ?').run(reportId);
   }
 
