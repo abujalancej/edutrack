@@ -342,10 +342,42 @@ export function centerRosterChangeMessage(changes: CenterRosterChange[]): string
   return `${labels.title}: ${changes.map(change => `${change.course} — ${labels.added}: ${change.added.join(', ') || labels.none}; ${labels.removed}: ${change.removed.join(', ') || labels.none}`).join(' | ')}`;
 }
 
+const copyWorkflowTranslations = {
+  ca: {
+    copySheet: 'Crear còpia',
+    copySheetCreated: 'Còpia creada correctament.', newStudentsWarning: '{count} alumnes nous', removedStudentsWarning: '{count} alumnes que ja no hi són', newAssessmentsWarning: '{count} avaluacions noves',
+    cannotDeleteCopiedAssessment: 'No es pot eliminar una avaluació heretada de la còpia anterior.', copySheetTrimesterRequired: 'Has de seleccionar un trimestre de destinació.', copySheetError: 'No s’ha pogut crear la còpia.', copySheetTitle: 'Crear còpia d’assignatura',
+    copySheetHelp: 'Selecciona el trimestre de destinació per crear un full nou amb la mateixa estructura d’avaluacions.', targetTrimester: 'Trimestre de destinació', selectTrimester: 'Selecciona un trimestre',
+    copySheetWarning: 'Es copiaran els exàmens i les avaluacions contínues amb els seus noms. S’esborraran les dates i no es copiaran les notes ni les observacions.', copySheetNoTrimesters: 'No hi ha cap altre trimestre disponible per a aquesta assignatura.'
+  },
+  en: {
+    copySheet: 'Create copy',
+    copySheetCreated: 'Copy created successfully.', newStudentsWarning: '{count} new students', removedStudentsWarning: '{count} students no longer listed', newAssessmentsWarning: '{count} new assessments',
+    cannotDeleteCopiedAssessment: 'An assessment inherited from the previous copy cannot be deleted.', copySheetTrimesterRequired: 'Select a destination term.', copySheetError: 'The copy could not be created.', copySheetTitle: 'Create subject copy',
+    copySheetHelp: 'Select the destination term to create a new sheet with the same assessment structure.', targetTrimester: 'Destination term', selectTrimester: 'Select a term',
+    copySheetWarning: 'Exams and continuous assessments will be copied with their names. Dates will be cleared, and grades and observations will not be copied.', copySheetNoTrimesters: 'No other term is available for this subject.'
+  },
+  eu: {
+    copySheet: 'Sortu kopia',
+    copySheetCreated: 'Kopia behar bezala sortu da.', newStudentsWarning: '{count} ikasle berri', removedStudentsWarning: '{count} ikasle jada ez daude zerrendan', newAssessmentsWarning: '{count} ebaluazio berri',
+    cannotDeleteCopiedAssessment: 'Ezin da aurreko kopiatik jasotako ebaluazio bat ezabatu.', copySheetTrimesterRequired: 'Hautatu helburuko hiruhilekoa.', copySheetError: 'Ezin izan da kopia sortu.', copySheetTitle: 'Sortu irakasgaiaren kopia',
+    copySheetHelp: 'Hautatu helburuko hiruhilekoa ebaluazio-egitura bera duen fitxa berria sortzeko.', targetTrimester: 'Helburuko hiruhilekoa', selectTrimester: 'Hautatu hiruhilekoa',
+    copySheetWarning: 'Azterketak eta etengabeko ebaluazioak beren izenekin kopiatuko dira. Datak ezabatuko dira, eta notak eta oharrak ez dira kopiatuko.', copySheetNoTrimesters: 'Ez dago beste hiruhilekorik erabilgarri irakasgai honetarako.'
+  },
+  gl: {
+    copySheet: 'Crear copia',
+    copySheetCreated: 'Copia creada correctamente.', newStudentsWarning: '{count} alumnos novos', removedStudentsWarning: '{count} alumnos que xa non están na lista', newAssessmentsWarning: '{count} avaliacións novas',
+    cannotDeleteCopiedAssessment: 'Non se pode eliminar unha avaliación herdada da copia anterior.', copySheetTrimesterRequired: 'Debes seleccionar un trimestre de destino.', copySheetError: 'Non se puido crear a copia.', copySheetTitle: 'Crear copia de materia',
+    copySheetHelp: 'Selecciona o trimestre de destino para crear unha nova folla coa mesma estrutura de avaliacións.', targetTrimester: 'Trimestre de destino', selectTrimester: 'Selecciona un trimestre',
+    copySheetWarning: 'Copiaranse os exames e as avaliacións continuas cos seus nomes. Borraranse as datas e non se copiarán as notas nin as observacións.', copySheetNoTrimesters: 'Non hai outro trimestre dispoñible para esta materia.'
+  }
+} satisfies Record<Exclude<AppLanguage, 'es'>, Partial<Record<Key, string>>>;
+
 export function tr(key: Key, vars: Record<string,string|number> = {}) {
   const translationKey = key as TranslationKey;
   const template = key === 'tutorComments' ? tutorCommentOverrides[activeLanguage] : key === 'replaceCenterDataWarning' ? safeCenterImportWarnings[activeLanguage] : genderedTerminologyOverrides[activeLanguage]?.[activeTeacherSex]?.[key] ?? trackingDocumentOverrides[activeLanguage]?.[key] ?? titleCasingOverrides[activeLanguage]?.[key] ?? helpWorkflowOverrides[activeLanguage]?.[key] ?? roleHelpOverrides[activeLanguage]?.[key] ?? subjectTerminologyOverrides[activeLanguage]?.[key] ?? genderedRoleOverrides[activeLanguage]?.[activeTeacherSex]?.[key] ?? profileSexOverrides[activeLanguage]?.[key] ?? deleteDialogOverrides[activeLanguage]?.[key] ?? electiveOverrides[activeLanguage]?.[key] ?? commonActionOverrides[activeLanguage]?.[key] ?? reportLibraryOverrides[activeLanguage]?.[key] ?? trackingStatusOverrides[activeLanguage]?.[key] ?? teacherSummaryOverrides[activeLanguage]?.[key] ?? dashboardMetricOverrides[activeLanguage]?.[key] ?? centerDataActionOverrides[activeLanguage]?.[key] ?? unifiedConfigurationOverrides[activeLanguage]?.[key] ?? completionOverrides[activeLanguage]?.[key] ?? configurationStatusOverrides[activeLanguage]?.[key] ?? terminologyOverrides[activeLanguage]?.[key] ?? onboardingOverrides[activeLanguage]?.[key] ?? gradeHelpOverrides[activeLanguage]?.[key] ?? focusedOverrides[activeLanguage]?.[key] ?? missingUiTranslations[activeLanguage]?.[translationKey] ?? (activeLanguage === 'es' ? es[translationKey] : translations[activeLanguage][translationKey]);
-  let value = Object.entries(vars).reduce((current,[name,replacement]) => current.replaceAll(`{${name}}`,String(replacement)), template);
+  const copyTranslation = activeLanguage === 'es' ? undefined : (copyWorkflowTranslations[activeLanguage] as Partial<Record<Key, string>>)[key];
+  let value = Object.entries(vars).reduce((current,[name,replacement]) => current.replaceAll(`{${name}}`,String(replacement)), copyTranslation ?? template);
   // A few workflow/help sentences are shared by languages and contain the
   // role noun inline. Adapt those occurrences as well as standalone labels.
   if (activeTeacherSex === 'FEMALE') {

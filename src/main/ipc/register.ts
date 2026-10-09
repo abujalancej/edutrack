@@ -1,4 +1,5 @@
 import { dialog, ipcMain } from 'electron';
+import { fileDialogLabels } from './file-dialog-labels';
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -24,7 +25,7 @@ export function registerIpc(db: AppDatabase) {
   });
   ipcMain.handle('configuration:center-import', async () => {
     if (db.listCourses().length || db.listStudents().length || db.listSubjects().length || db.listWorksheets().length || db.listTrackingReports().length) return { ok: false, code: 'CENTER_PREVIEW_REQUIRED', error: 'Los datos existentes requieren una vista previa antes de actualizarse.' };
-    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Datos del centro', extensions: ['csv', 'json'] }] });
+    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: fileDialogLabels(db.getLanguage()).center, extensions: ['csv', 'json'] }] });
     if (result.canceled || !result.filePaths[0]) return { ok: false, cancelled: true };
     try {
       const path = result.filePaths[0]; const parsed = parseCenterFile(await readFile(path, 'utf8'), extname(path));
@@ -37,7 +38,7 @@ export function registerIpc(db: AppDatabase) {
   });
   ipcMain.handle('configuration:center-analyze', async () => {
     pendingCenterUpdate = null;
-    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Datos del centro', extensions: ['csv', 'json'] }] });
+    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: fileDialogLabels(db.getLanguage()).center, extensions: ['csv', 'json'] }] });
     if (result.canceled || !result.filePaths[0]) return { ok: false, cancelled: true };
     try {
       const path = result.filePaths[0];
@@ -61,7 +62,7 @@ export function registerIpc(db: AppDatabase) {
   ipcMain.handle('configuration:center-cancel', () => { pendingCenterUpdate = null; });
   ipcMain.handle('configuration:center-clear', () => db.clearCenterData());
   ipcMain.handle('configuration:courses-import', async () => {
-    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Catálogo de cursos', extensions: ['csv', 'json'] }] });
+    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: fileDialogLabels(db.getLanguage()).courses, extensions: ['csv', 'json'] }] });
     if (result.canceled || !result.filePaths[0]) return { ok: false, cancelled: true };
     try {
       const path = result.filePaths[0]; const parsed = parseCoursesFile(await readFile(path, 'utf8'), extname(path));
@@ -70,7 +71,7 @@ export function registerIpc(db: AppDatabase) {
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'No se han podido cargar los cursos.' }; }
   });
   ipcMain.handle('configuration:subjects-import', async () => {
-    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Catálogo de asignaturas', extensions: ['csv', 'json'] }] });
+    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: fileDialogLabels(db.getLanguage()).subjects, extensions: ['csv', 'json'] }] });
     if (result.canceled || !result.filePaths[0]) return { ok: false, cancelled: true };
     try {
       const path = result.filePaths[0]; const parsed = parseSubjectsFile(await readFile(path, 'utf8'), extname(path));
@@ -79,7 +80,7 @@ export function registerIpc(db: AppDatabase) {
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'No se han podido cargar las asignaturas.' }; }
   });
   ipcMain.handle('configuration:logo-choose', async () => {
-    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Logo del centro', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] });
+    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: fileDialogLabels(db.getLanguage()).logo, extensions: ['png', 'jpg', 'jpeg', 'webp'] }] });
     if (result.canceled || !result.filePaths[0]) return { ok: false, cancelled: true };
     try {
       const path = result.filePaths[0]; const extension = extname(path).toLowerCase(); const data = await readFile(path);
@@ -100,7 +101,7 @@ export function registerIpc(db: AppDatabase) {
     return db.reorderStudents(course, ids);
   });
   ipcMain.handle('roster:choose', async () => {
-    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Listas de alumnos', extensions: ['csv', 'json'] }] });
+    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: fileDialogLabels(db.getLanguage()).roster, extensions: ['csv', 'json'] }] });
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
   ipcMain.handle('roster:analyze', async (_e, path: string) => {

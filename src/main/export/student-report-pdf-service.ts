@@ -45,6 +45,13 @@ const TRIMESTERS: Record<AppLanguage, Record<string, string>> = {
 };
 
 const LOCALES: Record<AppLanguage, string> = { es: 'es-ES', ca: 'ca-ES', en: 'en-GB', eu: 'eu-ES', gl: 'gl-ES' };
+const PDF_FILENAME_LABELS: Record<AppLanguage, { document: string; student: string; classGroup: string }> = {
+  es: { document: 'hoja', student: 'alumno', classGroup: 'clase' },
+  ca: { document: 'full', student: 'alumne', classGroup: 'classe' },
+  en: { document: 'tracker', student: 'student', classGroup: 'class' },
+  eu: { document: 'fitxa', student: 'ikaslea', classGroup: 'gela' },
+  gl: { document: 'folla', student: 'alumno', classGroup: 'clase' }
+};
 const PDF_LANGUAGE_SUFFIX: Record<AppLanguage, string> = { es: 'ESP', ca: 'CAT', en: 'ENG', eu: 'EUS', gl: 'GAL' };
 const FOLDER_DIALOG: Record<AppLanguage, { title: string; buttonLabel: string }> = {
   es: { title: 'Selecciona la carpeta para guardar los PDF', buttonLabel: 'Guardar aquí' },
@@ -145,10 +152,10 @@ export function buildStudentReportHtml(report: TrackingReportsExport, studentInd
 const pdfFooterTemplate = `<div style="width:100%;font-family:Segoe UI,Arial,sans-serif;font-size:8px;color:#89948f;border-top:1px solid #dfe6e3;padding:6px 13mm 0;display:flex;justify-content:space-between"><span>EduTrack v${APP_VERSION}</span><span><span class="pageNumber"></span>/<span class="totalPages"></span></span></div>`;
 
 export function studentReportFilename(report: TrackingReportsExport, studentName: string) {
-  const safeStudent = studentName.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'alumno';
+  const safeStudent = studentName.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || PDF_FILENAME_LABELS[report.language].student;
   const course = report.course.level.replace('_', '');
   const trimester = report.trimester.id.replace('_', '');
-  const documentName = report.language === 'ca' ? 'full' : report.language === 'en' ? 'tracker' : report.language === 'eu' ? 'fitxa' : report.language === 'gl' ? 'folla' : 'hoja';
+  const documentName = PDF_FILENAME_LABELS[report.language].document;
   const generatedDate = report.generatedAt.slice(0, 10).replaceAll('-', '');
   return `${course}_${trimester}_${documentName}-${report.report.sequence}_${generatedDate}_${safeStudent}_${PDF_LANGUAGE_SUFFIX[report.language]}.pdf`;
 }
@@ -156,9 +163,9 @@ export function studentReportFilename(report: TrackingReportsExport, studentName
 export function combinedStudentReportFilename(report: TrackingReportsExport) {
   const course = report.course.level.replace('_', '');
   const trimester = report.trimester.id.replace('_', '');
-  const documentName = report.language === 'ca' ? 'full' : report.language === 'en' ? 'tracker' : report.language === 'eu' ? 'fitxa' : report.language === 'gl' ? 'folla' : 'hoja';
+  const documentName = PDF_FILENAME_LABELS[report.language].document;
   const generatedDate = report.generatedAt.slice(0, 10).replaceAll('-', '');
-  return `${course}_${trimester}_${documentName}-${report.report.sequence}_${generatedDate}_todos_${PDF_LANGUAGE_SUFFIX[report.language]}.pdf`;
+  return `${course}_${trimester}_${documentName}-${report.report.sequence}_${generatedDate}_${PDF_FILENAME_LABELS[report.language].classGroup}_${PDF_LANGUAGE_SUFFIX[report.language]}.pdf`;
 }
 
 export async function mergeStudentReportPdfs(documents: readonly Uint8Array[]) {

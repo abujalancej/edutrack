@@ -57,7 +57,7 @@ describe('student report PDF content', () => {
 
   it('usa identificadores compactos y un nombre de alumno seguro en cada PDF', () => {
     expect(studentReportFilename(report, 'Anna García')).toBe('ESO1_T1_full-2_20260914_anna-garcia_CAT.pdf');
-    expect(combinedStudentReportFilename(report)).toBe('ESO1_T1_full-2_20260914_todos_CAT.pdf');
+    expect(combinedStudentReportFilename(report)).toBe('ESO1_T1_full-2_20260914_classe_CAT.pdf');
   });
 
   it.each([
@@ -65,6 +65,18 @@ describe('student report PDF content', () => {
   ] as const)('añade el sufijo de idioma %s al final del PDF', (language, suffix) => {
     const localizedReport = { ...report, language };
     expect(studentReportFilename(localizedReport, 'Anna García')).toMatch(new RegExp(`_${suffix}\\.pdf$`));
+  });
+
+  it.each([
+    ['es', 'hoja', 'alumno', 'clase', 'ESP'],
+    ['ca', 'full', 'alumne', 'classe', 'CAT'],
+    ['en', 'tracker', 'student', 'class', 'ENG'],
+    ['eu', 'fitxa', 'ikaslea', 'gela', 'EUS'],
+    ['gl', 'folla', 'alumno', 'clase', 'GAL']
+  ] as const)('localiza el PDF conjunto y el nombre de reserva en %s', (language, document, student, classGroup, suffix) => {
+    const localizedReport = { ...report, language };
+    expect(combinedStudentReportFilename(localizedReport)).toBe(`ESO1_T1_${document}-2_20260914_${classGroup}_${suffix}.pdf`);
+    expect(studentReportFilename(localizedReport, '学生')).toBe(`ESO1_T1_${document}-2_20260914_${student}_${suffix}.pdf`);
   });
 
   it('trata una optativa como una asignatura normal y deja vacías las notas del alumnado que no la cursa', () => {

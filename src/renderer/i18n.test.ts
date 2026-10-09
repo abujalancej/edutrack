@@ -110,6 +110,19 @@ describe('ayuda del flujo de trabajo', () => {
 
 describe('textos localizados de la interfaz', () => {
   it.each([
+    ['ca', 'Crear còpia d’assignatura', '2 alumnes nous'],
+    ['en', 'Create subject copy', '2 new students'],
+    ['eu', 'Sortu irakasgaiaren kopia', '2 ikasle berri'],
+    ['gl', 'Crear copia de materia', '2 alumnos novos']
+  ] as const)('traduce la copia de asignaturas y los avisos en %s', (language, title, warning) => {
+    setActiveLanguage(language);
+    expect(tr('copySheetTitle')).toBe(title);
+    expect(tr('newStudentsWarning', { count: 2 })).toBe(warning);
+    expect(tr('copySheetWarning')).not.toContain('Se copiarán');
+    expect(tr('cannotDeleteCopiedAssessment')).not.toContain('No se puede');
+  });
+
+  it.each([
     ['ca', 'Afegir nota', 'Ajuda'],
     ['en', 'Add assessment', 'Help'],
     ['eu', 'Gehitu ebaluazioa', 'Laguntza'],
