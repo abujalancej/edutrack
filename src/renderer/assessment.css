@@ -529,3 +529,14 @@ button[aria-busy="true"] { opacity: 1; cursor: progress; }
 .report-generation-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; background: #eef3f0b8; backdrop-filter: blur(7px); cursor: progress; outline: none; }
 .report-generation-overlay .report-generation-spinner { width: 66px; height: 66px; border-width: 6px; box-shadow: 0 5px 22px #163a3315; }
 .report-generation-overlay p { margin: 0; min-height: 48px; max-width: 460px; padding: 0 20px; text-align: center; line-height: 1.6; color: var(--green-dark); font-size: 15px; font-weight: 600; }
+.app-shell select:not([multiple]), .welcome-language select:not([multiple]), .modal select:not([multiple]) {
+  appearance: none;
+  padding-right: 38px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2351605c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+}
+.sidebar select:not([multiple]), .welcome-language select:not([multiple]) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23eaf2ef' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}

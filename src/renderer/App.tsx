@@ -7,11 +7,11 @@ import type { AppLanguage, AppMode, AssessmentKind, FullSeguimentExport, GradeMo
 import type { FullSeguimentApi } from '@shared/types/ipc';
 import { Icon } from './components/Icon';
 import { TutorObservationGrid } from './components/TutorObservationGrid';
-import { LANGUAGES, LANGUAGE_LABELS, centerRosterChangeMessage, centerUpdateText, courseUi, reportGenerationLabel, deliveryGeneratedLabel, deliveryRosterInstruction, getActiveLanguage, individualAssessmentUi, localizedError, reportUi, setActiveLanguage, setActiveTeacherSex, subjectUi, tr, trimesterOptionUi, trimesterUi, worksheetStatusUi } from './i18n';
+import { LANGUAGES, LANGUAGE_LABELS, configurationDetailLabels, centerRosterChangeMessage, centerUpdateText, courseUi, reportGenerationLabel, deliveryGeneratedLabel, deliveryRosterInstruction, getActiveLanguage, individualAssessmentUi, localizedError, reportUi, setActiveLanguage, setActiveTeacherSex, subjectUi, tr, trimesterOptionUi, trimesterUi, worksheetStatusUi } from './i18n';
 import { subjectMonograms } from './subject-monogram';
 import appIcon from './assets/app-icon.png';
 import { APP_VERSION } from '@shared/version';
-import { backupLabels } from '@shared/backup-labels';
+import { backupContentLabels, backupLabels } from '@shared/backup-labels';
 import type { BackupPreviewResult } from '@shared/backup';
 
 type View = { page: 'dashboard' | 'settings' | 'help' } | { page: 'sheet'; id: number } | { page: 'imported'; id: number } | { page: 'tutor-report'; reportId: number };
@@ -101,7 +101,7 @@ function Sidebar({ mode, view, state, onNavigate, onMode, language, onLanguage }
   const dataComplete = Boolean(state.courses.length && state.subjects.length && state.students.length && state.schoolLogo && state.profile.firstName.trim() && state.profile.lastName.trim());
   return <aside className="sidebar">
     <div className="brand"><Logo /><div><strong>EduTrack</strong><small>{tr('academicManagement')}</small></div></div>
-    <div className="mode-switch" role="group" aria-label="Modo de trabajo">
+    <div className="mode-switch" role="group" aria-label={tr('chooseRole')}>
       <button title={tr('teacher')} className={mode === 'teacher' ? 'active' : ''} onClick={() => onMode('teacher')}><Icon name="teacher" /> <span>{tr('teacher')}</span></button>
       <button title={tr('tutor')} className={mode === 'tutor' ? 'active' : ''} onClick={() => onMode('tutor')}><Icon name="tutor" /> <span>{tr('tutor')}</span></button>
     </div>
@@ -485,6 +485,23 @@ function ElectiveStudentsModal({ sheet, close, save }: { sheet: WorksheetDetail;
   </Modal>;
 }
 
+function ConfigurationGradeDetails({ configuration, language }: { configuration: InitialState['centerConfiguration']; language: AppLanguage }) {
+  const labels = configurationDetailLabels[language];
+  return <>
+    {configuration.hasAssessmentWeights && <div className="configuration-weight-cards">
+      <div><span>{tr('exam')}</span><strong>{configuration.examWeight}<small>%</small></strong></div>
+      <div><span>{tr('continuous')}</span><strong>{configuration.continuousAssessmentWeight}<small>%</small></strong></div>
+    </div>}
+    <div className="configuration-grade-mode"><span>{tr('gradeMode')}</span><strong>{configuration.finalReportGradeMode === 'LETTER' ? tr('letterGrades') : tr('numericGrades')}</strong></div>
+    {configuration.hasLetterGrades && <section className="configuration-grade-section">
+      <strong className="configuration-detail-title">{labels.scale}</strong>
+      <dl className="configuration-grade-thresholds">{configuration.grades.map(grade => <div key={grade.grade}><dt>{grade.grade}</dt><dd>{grade.from}</dd></div>)}</dl>
+      {Object.keys(configuration.gradesExplanation ?? {}).length > 0 && <dl className="configuration-grade-meanings">{Object.entries(configuration.gradesExplanation ?? {}).map(([grade, explanation]) => <div key={grade}><dt>{grade}</dt><dd>{explanation}</dd></div>)}</dl>}
+    </section>}
+    <div className="configuration-not-evaluated"><span>{labels.notEvaluated}</span><strong>{configuration.notEvaluatedValue}</strong></div>
+  </>;
+}
+
 function BackupPanel({ language, refresh }: { language: AppLanguage; refresh: () => Promise<void> }) {
   const labels = backupLabels[language];
   const [preview, setPreview] = useState<Extract<BackupPreviewResult, { ok: true }> | null>(null);
@@ -510,12 +527,12 @@ function BackupPanel({ language, refresh }: { language: AppLanguage; refresh: ()
     finally { setBusy(false); }
   };
   const cancel = () => { if (!busy) { setPreview(null); void window.fullSeguiment.cancelBackup(); } };
-  return <section className="panel"><div className="panel-heading"><span className="panel-icon"><Icon name="download" /></span><div><h2>{labels.title}</h2><p>{labels.help}</p></div></div>
-    <div className="header-actions"><button className="secondary" disabled={busy} onClick={() => void run('export')}>{labels.export}</button><button className="secondary" disabled={busy} onClick={() => void run('preview')}>{labels.restore}</button></div>
-    {message && <p role="status" className={error ? 'inline-error' : ''} style={{ overflowWrap: 'anywhere' }}>{message}</p>}
-    {preview && <Modal title={labels.preview} subtitle={labels.warning} close={cancel}>
+  return <section className="panel backup-panel"><div className="panel-heading"><span className="panel-icon"><Icon name="database" size={22} /></span><div><h2>{labels.title}</h2><p>{labels.help}</p></div></div>
+    <div className="configuration-card backup-card"><div className="configuration-card-heading"><span><Icon name="copy" /></span><div><h3>{backupContentLabels[language]}</h3></div></div><div className="backup-card-actions"><button className="primary" disabled={busy} aria-busy={busy} onClick={() => void run('export')}><Icon name="download" />{labels.export}</button><button className="secondary" disabled={busy} onClick={() => void run('preview')}><Icon name="upload" />{labels.restore}</button></div></div>
+    {message && <div role="status" className={`backup-feedback ${error ? 'is-error' : ''}`}><Icon name={error ? 'x' : 'check'} /><p>{message}</p></div>}
+    {preview && <Modal title={labels.preview} subtitle={labels.warning} close={cancel} className="backup-preview-modal">
       <p>{labels.date}: {formatDate(preview.summary.createdAt)}</p><p>{labels.teacher}: {preview.summary.teacher || '—'}</p>
-      <dl>{labels.counts.split(' · ').map((label, index) => <div key={index}><dt>{label}</dt><dd>{[preview.summary.courses, preview.summary.students, preview.summary.worksheets, preview.summary.reports][index]}</dd></div>)}</dl>
+      <dl className="backup-summary">{labels.counts.split(' · ').map((label, index) => <div key={index}><dt>{label}</dt><dd>{[preview.summary.courses, preview.summary.students, preview.summary.worksheets, preview.summary.reports][index]}</dd></div>)}</dl>
       <div className="modal-actions"><button className="secondary" disabled={busy} onClick={cancel}>{labels.cancel}</button><button className="danger-confirm" disabled={busy} aria-busy={busy} onClick={() => void run('restore')}>{labels.confirm}</button></div>
     </Modal>}
   </section>;
@@ -554,10 +571,10 @@ function Settings({ state, refresh, notify, onProfileChange }: { state: InitialS
   const clearCenterData = async () => { await window.fullSeguiment.clearCenterData(); await refresh(); notify({ type: 'success', text: tr('centerDataDeleted') }); };
   const loadLogo = async () => { const result = await window.fullSeguiment.chooseSchoolLogo(); if (result.cancelled) return; if (!result.ok) { notify({ type: 'error', text: localizedError(result.error, 'configurationImportError') }); return; } await refresh(); notify({ type: 'success', text: tr('logoLoaded') }); };
   const removeLogo = async () => { await window.fullSeguiment.removeSchoolLogo(); await refresh(); };
-  return <>
+  return <div className="settings-page">
     <PageHeader eyebrow={tr('localPreferences')} title={tr('settings')} subtitle={tr('settingsHelp')} />
     <section className="panel school-configuration"><div className="panel-heading"><span className="panel-icon"><Icon name="settings" /></span><div><h2>{tr('schoolConfiguration')}</h2><p>{tr('schoolConfigurationHelp')}</p></div></div><div className="configuration-cards">
-      <article className="configuration-card"><div className="configuration-card-heading"><span><Icon name="school" /></span><div><h3>{tr('centerData')}</h3></div></div><div className={`configuration-status-list ${hasCenterData ? 'loaded' : 'missing'}`}><small className="configuration-status">{hasCenterData ? tr('centerDataLoaded', { courses: state.courses.length, subjects: state.subjects.length, students: state.students.length }) : tr('noCenterData')}</small><small className="configuration-status">{tr(state.centerConfiguration.hasAssessmentWeights ? 'centerAssessmentConfiguration' : 'centerAssessmentConfigurationMissing', { format: state.centerConfiguration.finalReportGradeMode === 'LETTER' ? tr('letterGrades') : tr('numericGrades') })}</small></div><div className="configuration-actions"><button className="icon-button sheet-card-icon-action sheet-export-button configuration-action" title={tr('loadCenterData')} aria-label={tr('loadCenterData')} onClick={() => void (hasCenterData ? previewCenterData() : loadCenterData())}><Icon name="upload" /></button><button className="icon-button danger sheet-card-icon-action configuration-delete" title={tr('deleteCenterData')} aria-label={tr('deleteCenterData')} disabled={!hasCenterData} onClick={() => setDeleteTarget('center')}><Icon name="trash" /></button></div></article>
+      <article className="configuration-card"><div className="configuration-card-heading"><span><Icon name="school" /></span><div><h3>{tr('centerData')}</h3></div></div><div className={`configuration-status-list ${hasCenterData ? 'loaded' : 'missing'}`}><div className="configuration-detail"><small className="configuration-status" tabIndex={hasCenterData ? 0 : undefined} aria-describedby={hasCenterData ? 'center-data-details' : undefined}>{hasCenterData ? tr('centerDataLoaded', { courses: state.courses.length, subjects: state.subjects.length, students: state.students.length }) : tr('noCenterData')}</small>{hasCenterData && <div className="configuration-tooltip" id="center-data-details" role="region" aria-label={tr('centerData')}>{state.courses.map(course => <div className="configuration-tooltip-course" key={course.id}><strong>{course.name}</strong><details className="configuration-course-list"><summary>{tr('studentsConfigured')} <b>{state.students.filter(student => student.courseLevel === course.id).length}</b></summary><ol>{state.students.filter(student => student.courseLevel === course.id).map(student => <li key={student.id}>{student.fullName}</li>)}</ol></details><details className="configuration-course-list"><summary>{tr('configuredSubjects')} <b>{state.subjects.filter(subject => subject.courseId === course.id).length}</b></summary><ul>{state.subjects.filter(subject => subject.courseId === course.id).map(subject => <li key={subject.name}>{subject.name}</li>)}</ul></details></div>)}</div>}</div><div className="configuration-detail"><small className="configuration-status" tabIndex={0} aria-describedby="center-grade-details">{tr(state.centerConfiguration.hasAssessmentWeights ? 'centerAssessmentConfiguration' : 'centerAssessmentConfigurationMissing', { format: state.centerConfiguration.finalReportGradeMode === 'LETTER' ? tr('letterGrades') : tr('numericGrades') })}</small><div className="configuration-tooltip configuration-grades-tooltip" id="center-grade-details" role="tooltip"><ConfigurationGradeDetails configuration={state.centerConfiguration} language={state.language} /></div></div></div><div className="configuration-actions"><button className="icon-button sheet-card-icon-action sheet-export-button configuration-action" title={tr('loadCenterData')} aria-label={tr('loadCenterData')} onClick={() => void (hasCenterData ? previewCenterData() : loadCenterData())}><Icon name="upload" /></button><button className="icon-button danger sheet-card-icon-action configuration-delete" title={tr('deleteCenterData')} aria-label={tr('deleteCenterData')} disabled={!hasCenterData} onClick={() => setDeleteTarget('center')}><Icon name="trash" /></button></div></article>
       <article className="configuration-card"><div className="configuration-card-heading"><span><Icon name="image" /></span><div><h3>{tr('schoolLogo')}</h3></div></div><div className="logo-state-row"><div className="logo-status-preview"><span className={`configuration-status ${state.schoolLogo ? 'loaded' : 'missing'}`} tabIndex={state.schoolLogo ? 0 : undefined}>{state.schoolLogo ? tr('logoLoadedStatus') : tr('noLogoLoaded')}</span>{state.schoolLogo && <div className="logo-hover-preview" role="tooltip"><img src={state.schoolLogo} alt={tr('schoolLogo')} /></div>}</div></div><div className="configuration-actions"><button className="icon-button sheet-card-icon-action sheet-export-button configuration-action" title={tr('loadLogo')} aria-label={tr('loadLogo')} onClick={() => void loadLogo()}><Icon name="upload" /></button><button className="icon-button danger sheet-card-icon-action configuration-delete" title={tr('removeLogo')} aria-label={tr('removeLogo')} disabled={!state.schoolLogo} onClick={() => setDeleteTarget('logo')}><Icon name="trash" /></button></div></article>
     </div></section>
     <section className="panel teacher-profile-panel"><div className="panel-heading"><span className="panel-icon"><Icon name="teacher" /></span><div><h2>{tr('teacherData')}</h2><p>{tr('teacherDataHelp')}</p></div></div><div className="teacher-profile-fields"><label>{tr('firstName')}<input value={firstName} onChange={e => changeProfile('firstName', e.target.value)} onBlur={() => void persistProfile()} placeholder={tr('yourName')} /></label><label>{tr('lastName')}<input value={lastName} onChange={e => changeProfile('lastName', e.target.value)} onBlur={() => void persistProfile()} placeholder={tr('yourLastName')} /></label><label>{tr('sex')}<select required aria-required="true" value={sex} onChange={event => void changeSex(event.target.value as TeacherSex)}><option value="MALE">{tr('male')}</option><option value="FEMALE">{tr('female')}</option></select></label></div></section>
@@ -570,7 +587,7 @@ function Settings({ state, refresh, notify, onProfileChange }: { state: InitialS
       await refresh();
     }} />
     {centerPreview && <CenterUpdatePreviewModal result={centerPreview} cancel={() => void cancelCenterPreview()} apply={applyCenterPreview} />}
-  </>;
+  </div>;
 }
 
 function CenterUpdatePreviewModal({ result, cancel, apply }: { result: CenterPreviewResult; cancel: () => void; apply: (date: string | null, assignments: CenterUpdateAssignment[]) => Promise<boolean> }) {

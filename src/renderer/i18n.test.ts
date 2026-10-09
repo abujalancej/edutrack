@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { configurationDetailLabels } from './i18n';
+import { backupContentLabels, backupLabels } from '../shared/backup-labels';
 import { centerRosterChangeMessage, centerUpdateText, localizedError, reportUi, setActiveLanguage, setActiveTeacherSex, subjectUi, tr, trimesterOptionUi, trimesterUi } from './i18n';
 
 describe('importación segura del centro', () => {
@@ -109,6 +111,27 @@ describe('ayuda del flujo de trabajo', () => {
 });
 
 describe('textos localizados de la interfaz', () => {
+  it.each([
+    ['es', 'Copia de seguridad', 'Datos e historial', 'No evaluado'],
+    ['ca', 'Còpia de seguretat', 'Dades i historial', 'No avaluat'],
+    ['en', 'Backup', 'Data and history', 'Not evaluated'],
+    ['eu', 'Segurtasun-kopia', 'Datuak eta historia', 'Ebaluatu gabe'],
+    ['gl', 'Copia de seguridade', 'Datos e historial', 'Non avaliado']
+  ] as const)('mantiene los detalles de configuración en %s', (language, title, content, notEvaluated) => {
+    setActiveLanguage(language);
+    expect(backupLabels[language].title).toBe(title);
+    expect(backupContentLabels[language]).toBe(content);
+    expect(configurationDetailLabels[language].notEvaluated).toBe(notEvaluated);
+    expect(Object.keys(backupLabels[language]).sort()).toEqual(Object.keys(backupLabels.es).sort());
+    expect(Object.values(backupLabels[language]).every(value => value.trim().length > 0)).toBe(true);
+    expect(backupLabels[language].counts.split(' · ')).toHaveLength(4);
+    const loaded = tr('centerDataLoaded', { courses: 4, subjects: 58, students: 116 });
+    expect(loaded).not.toMatch(/\.$/);
+    expect(loaded).not.toMatch(/\{\w+\}/);
+    expect(loaded).toContain('116');
+    setActiveLanguage('es');
+  });
+
   it.each([
     ['ca', 'Crear còpia d’assignatura', '2 alumnes nous'],
     ['en', 'Create subject copy', '2 new students'],
