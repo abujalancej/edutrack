@@ -4,6 +4,7 @@ import { COURSE_LABELS, COURSE_LEVELS, normalizeTrimester, SUBJECTS_BY_COURSE, T
 import { DEFAULT_CENTER_CONFIGURATION, normalizeCenterConfiguration } from '../../shared/center/center-configuration';
 import { isCompleteGradeValue, normalizeGradeValue } from '../../shared/grades/grades';
 import { assessmentApplicability } from '../../shared/assessment/applicability';
+import { orderAssessments } from '../../shared/assessment/order';
 import { compareDeliveryRoster, deliveryRosterError } from '../import/delivery-roster';
 import { buildTrackingReports } from '../export/tracking-report-service';
 import { buildStudentReportHtml } from '../export/student-report-pdf-service';
@@ -73,7 +74,6 @@ export class AppDatabase {
   private readonly db: DatabaseSync;
   private transactionDepth = 0;
 
-  constructor(path: string) {
   exportBackup() {
     const tables = (this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as Row[]).map(row => String(row.name));
     return {
@@ -124,6 +124,7 @@ export class AppDatabase {
     });
   }
 
+  constructor(path: string) {
     this.db = new DatabaseSync(path);
     this.db.exec('PRAGMA journal_mode = WAL');
     this.db.exec('PRAGMA foreign_keys = ON');
@@ -1015,7 +1016,7 @@ export class AppDatabase {
   getWorksheet(id: number): WorksheetDetail {
     const worksheet = this.db.prepare('SELECT * FROM worksheets WHERE id = ?').get(id) as Row | undefined;
     if (!worksheet) throw new Error('No se ha encontrado la hoja.');
-    const columns = (this.db.prepare('SELECT * FROM worksheet_columns WHERE worksheet_id = ? ORDER BY sort_order, id').all(id) as Row[])
+    const columns = (this.db.prepare("SELECT * FROM worksheet_columns WHERE worksheet_id = ? ORDER BY CASE WHEN assessment_date IS NULL OR assessment_date = '' THEN 1 ELSE 0 END, assessment_date, sort_order, id").all(id) as Row[])
       .map(row => ({ id: row.id, worksheetId: row.worksheet_id, exportId: row.export_id, name: row.name, kind: row.kind ?? 'CONTINUOUS_ASSESSMENT', assessmentDate: row.assessment_date ?? '', sortOrder: row.sort_order, studentIds: row.student_ids_json == null ? undefined : JSON.parse(row.student_ids_json) as number[], sourceColumnId: row.source_column_id === null || row.source_column_id === undefined ? undefined : Number(row.source_column_id) }));
     const values: Record<string, string> = {};
     const observations: Record<string, string> = {};
@@ -1307,6 +1308,7 @@ export class AppDatabase {
     const row = this.db.prepare('SELECT * FROM imported_worksheets WHERE id = ?').get(id) as Row | undefined;
     if (!row) throw new Error('No se ha encontrado la entrega importada.');
     const payload = JSON.parse(row.payload_json) as FullSeguimentExport;
+    payload.columns = orderAssessments(payload.columns);
     const trimester = normalizeTrimester(payload.trimester?.id);
     if (trimester) payload.trimester.id = trimester;
     return { ...this.mapImport(row), payload };

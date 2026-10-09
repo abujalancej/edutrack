@@ -15,6 +15,27 @@ describe('AppDatabase', () => {
   });
   afterEach(() => db.close());
 
+  it('ordena por fecha al añadir y editar sin mover las notas de evaluación', () => {
+    db.saveProfile({ firstName: 'Marta', lastName: 'Serra', sex: 'FEMALE' });
+    const student = db.addStudent('ESO_2', 'Anna Pérez');
+    const sheet = db.createWorksheet({ courseLevel: 'ESO_2', trimester: 'T_1', subject: 'Matemàtiques' });
+    const first = db.addAssessment(sheet.id, 'EXAM', 'Examen 20', '2026-10-20').columns[0];
+    db.addAssessment(sheet.id, 'CONTINUOUS_ASSESSMENT', 'Actividad 10', '2026-10-10');
+    db.addAssessment(sheet.id, 'EXAM', 'Otro examen 10', '2026-10-10');
+    expect(db.getWorksheet(sheet.id).columns.map(column => column.name)).toEqual(['Actividad 10', 'Otro examen 10', 'Examen 20']);
+    for (const column of db.getWorksheet(sheet.id).columns) db.saveCell(sheet.id, student.id, column.id, 'grade', column.id === first.id ? '9' : '7');
+    db.saveCell(sheet.id, student.id, first.id, 'observation', 'Nota del examen');
+    db.updateAssessment(first.id, { kind: 'EXAM', name: first.name, assessmentDate: '2026-10-01' });
+    expect(db.getWorksheet(sheet.id).columns[0].id).toBe(first.id);
+    expect(db.getWorksheet(sheet.id).values[`${student.id}:${first.id}`]).toBe('9');
+    const exported = buildExport(db, sheet.id);
+    expect(exported.columns.map(column => column.assessmentDate)).toEqual(['2026-10-01', '2026-10-10', '2026-10-10']);
+    exported.columns.reverse();
+    db.saveImport(exported, false);
+    expect(db.getImportedWorksheet(db.listImports()[0].id).payload.columns[0].id).toBe(exported.columns[2].id);
+    expect(buildTrackingReports(db, db.listTrackingReports()[0].id).subjects[0].columns.map(column => column.assessmentDate)).toEqual(['2026-10-01', '2026-10-10', '2026-10-10']);
+  });
+
   it('comparte el roster entre todas las hojas del curso y guarda celdas', () => {
     const anna = db.addStudent('ESO_2', 'Anna Pérez');
     const maths = db.createWorksheet({ courseLevel: 'ESO_2', trimester: 'T_1', subject: 'Matemàtiques' });
@@ -70,7 +91,7 @@ describe('AppDatabase', () => {
     db.updateAssessment(detail.columns[1].id, { kind: detail.columns[1].kind, name: detail.columns[1].name, assessmentDate: '2026-10-02' });
     expect(db.listWorksheets().find(sheet => sheet.id === copy.id)?.isComplete).toBe(true);
     expect(db.listWorksheets().find(sheet => sheet.id === copy.id)?.changeSummary).toEqual({ addedStudents: ['Marc López'], removedStudents: [], addedAssessments: [] });
-    const newAssessment = db.addAssessment(copy.id, 'EXAM', 'Examen 2', '2026-10-01').columns.at(-1)!;
+    const newAssessment = db.addAssessment(copy.id, 'EXAM', 'Examen 2', '2026-10-01').columns.find(column => column.name === 'Examen 2')!;
     expect(db.listWorksheets().find(sheet => sheet.id === copy.id)?.changeSummary?.addedAssessments).toEqual(['Examen 2']);
     expect(() => db.deleteColumn(detail.columns[0].id)).toThrow('COPIED_ASSESSMENT_CANNOT_BE_DELETED');
     db.deleteColumn(newAssessment.id);

@@ -206,7 +206,7 @@ function WorksheetPage({ id, navigate, refresh, notify, courses, profile, center
     if (columnId) await window.fullSeguiment.updateAssessment(columnId, input);
     else {
       const updated = await window.fullSeguiment.addAssessment({ worksheetId: id, ...input });
-      setActiveAssessmentId(updated.columns.at(-1)?.id ?? null); setSelection(null);
+      setActiveAssessmentId(updated.columns.find(column => !sheet.columns.some(previous => previous.id === column.id))?.id ?? null); setSelection(null);
       setSheet(updated);
     }
     setAdding(false); setEditing(null); await load(); await refresh();
