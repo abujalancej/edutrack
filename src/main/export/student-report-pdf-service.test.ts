@@ -190,6 +190,36 @@ describe('student report PDF content', () => {
     const second = await PDFDocument.create(); second.addPage([200, 200]); second.addPage([300, 300]);
     const mergedBytes = await mergeStudentReportPdfs([await first.save(), await second.save()]);
     const merged = await PDFDocument.load(mergedBytes);
-    expect(merged.getPages().map(page => page.getWidth())).toEqual([100, 200, 300]);
+    expect(merged.getPages().map(page => page.getWidth())).toEqual([100, 100, 200, 300]);
+    expect(merged.getPage(1).node.Contents()).toBeUndefined();
+  });
+
+  it('rellena cada informe impar, incluido el último, para imprimir la clase a doble cara', async () => {
+    const documents: Uint8Array[] = [];
+    for (const [student, count] of [1, 2, 3, 4, 5].entries()) {
+      const pdf = await PDFDocument.create();
+      for (let page = 0; page < count; page += 1) {
+        pdf.addPage([100 + student, 200 + page]).drawText(`Student ${student} page ${page}`);
+      }
+      documents.push(await pdf.save());
+    }
+    const merged = await PDFDocument.load(await mergeStudentReportPdfs(documents));
+    let offset = 0;
+    for (const [student, count] of [1, 2, 3, 4, 5].entries()) {
+      expect(offset % 2).toBe(0);
+      for (let page = 0; page < count; page += 1) {
+        expect(merged.getPage(offset + page).getSize()).toEqual({ width: 100 + student, height: 200 + page });
+        expect(merged.getPage(offset + page).node.Contents()).toBeDefined();
+      }
+      offset += count;
+      if (count % 2 !== 0) {
+        expect(merged.getPage(offset).getSize()).toEqual(merged.getPage(offset - 1).getSize());
+        expect(merged.getPage(offset).node.Contents()).toBeUndefined();
+        offset += 1;
+      }
+      expect((await PDFDocument.load(documents[student])).getPageCount()).toBe(count);
+    }
+    expect(merged.getPageCount()).toBe(offset);
+    expect(offset).toBe(18);
   });
 });

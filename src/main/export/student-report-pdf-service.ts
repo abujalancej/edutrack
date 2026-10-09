@@ -175,6 +175,12 @@ export async function mergeStudentReportPdfs(documents: readonly Uint8Array[]) {
     const source = await PDFDocument.load(document);
     const pages = await combined.copyPages(source, source.getPageIndices());
     pages.forEach(page => combined.addPage(page));
+    // Give every student a whole number of sheets when printing duplex,
+    // including the final student in the class document.
+    if (pages.length % 2 !== 0) {
+      const { width, height } = pages[pages.length - 1].getSize();
+      combined.addPage([width, height]);
+    }
   }
   return combined.save();
 }
