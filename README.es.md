@@ -1,5 +1,7 @@
 # EduTrack 1.2.0
 
+En Configuración, **Copia de seguridad** permite exportar todo el trabajo de profesor y tutor a un archivo `.edutrack-backup`: incluye notas, evaluaciones, historial del alumnado, entregas, informes emitidos, observaciones, logo y preferencias. Para trasladar el trabajo a otro equipo, usa **Restaurar una copia**. Se muestra un resumen antes de confirmar la sustitución completa de los datos actuales. Antes de restaurar se guarda automáticamente una copia de los datos anteriores en la carpeta `backups` de los datos de la aplicación; su ruta aparece tras la restauración y puede seleccionarse para recuperar ese estado. Los PDF guardados fuera de la aplicación no se incluyen como archivos, pero las instantáneas de los informes emitidos se conservan para regenerarlos.
+
 [Changelog](CHANGELOG.md)
 
 [English](README.md) · **Español** · [Català](README.ca.md)

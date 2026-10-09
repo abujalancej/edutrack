@@ -11,6 +11,8 @@ import { LANGUAGES, LANGUAGE_LABELS, centerRosterChangeMessage, centerUpdateText
 import { subjectMonograms } from './subject-monogram';
 import appIcon from './assets/app-icon.png';
 import { APP_VERSION } from '@shared/version';
+import { backupLabels } from '@shared/backup-labels';
+import type { BackupPreviewResult } from '@shared/backup';
 
 type View = { page: 'dashboard' | 'settings' | 'help' } | { page: 'sheet'; id: number } | { page: 'imported'; id: number } | { page: 'tutor-report'; reportId: number };
 type Notice = { type: 'success' | 'error'; text: string } | null;
@@ -52,7 +54,7 @@ export default function App() {
   const [notice, setNotice] = useState<Notice>(null);
   const [language, setLanguage] = useState<AppLanguage>('es');
 
-  const refresh = useCallback(async () => { const next = await window.fullSeguiment.getInitialState(); setActiveTeacherSex(next.profile.sex); setState(next); }, []);
+  const refresh = useCallback(async () => { const next = await window.fullSeguiment.getInitialState(); setActiveLanguage(next.language); setLanguage(next.language); setActiveTeacherSex(next.profile.sex); setState(next); }, []);
   const updateProfile = useCallback((profile: InitialState['profile']) => { const normalized = { ...profile, sex: profile.sex === 'FEMALE' ? 'FEMALE' as const : 'MALE' as const }; setActiveTeacherSex(normalized.sex); setState(current => ({ ...current, profile: normalized })); }, []);
   useEffect(() => { void window.fullSeguiment.getInitialState().then(next => { setState(next); setLanguage(next.language); setActiveLanguage(next.language); setActiveTeacherSex(next.profile.sex); }).finally(() => setLoading(false)); }, []);
   useEffect(() => { if (!loading && view.page === 'dashboard') void window.fullSeguiment.getInitialState().then(setState); }, [loading, mode, view.page]);
@@ -483,6 +485,42 @@ function ElectiveStudentsModal({ sheet, close, save }: { sheet: WorksheetDetail;
   </Modal>;
 }
 
+function BackupPanel({ language, refresh }: { language: AppLanguage; refresh: () => Promise<void> }) {
+  const labels = backupLabels[language];
+  const [preview, setPreview] = useState<Extract<BackupPreviewResult, { ok: true }> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState(false);
+  const run = async (action: 'export' | 'preview' | 'restore') => {
+    if (busy) return;
+    setBusy(true); setMessage(''); setError(false);
+    try {
+      if (action === 'preview') {
+        const result = await window.fullSeguiment.previewBackup();
+        if (result.ok) setPreview(result);
+        else if (!result.cancelled) { setError(true); setMessage(labels.error); }
+      } else {
+        const result = action === 'export' ? await window.fullSeguiment.exportBackup() : preview ? await window.fullSeguiment.restoreBackup(preview.token) : null;
+        if (result?.ok) {
+          setMessage(`${action === 'export' ? labels.saved : labels.restored} ${result.path}`);
+          if (action === 'restore') { setPreview(null); await refresh(); }
+        } else if (result && !result.cancelled) { setPreview(null); setError(true); setMessage(labels.error); }
+      }
+    } catch { setError(true); setMessage(labels.error); }
+    finally { setBusy(false); }
+  };
+  const cancel = () => { if (!busy) { setPreview(null); void window.fullSeguiment.cancelBackup(); } };
+  return <section className="panel"><div className="panel-heading"><span className="panel-icon"><Icon name="download" /></span><div><h2>{labels.title}</h2><p>{labels.help}</p></div></div>
+    <div className="header-actions"><button className="secondary" disabled={busy} onClick={() => void run('export')}>{labels.export}</button><button className="secondary" disabled={busy} onClick={() => void run('preview')}>{labels.restore}</button></div>
+    {message && <p role="status" className={error ? 'inline-error' : ''} style={{ overflowWrap: 'anywhere' }}>{message}</p>}
+    {preview && <Modal title={labels.preview} subtitle={labels.warning} close={cancel}>
+      <p>{labels.date}: {formatDate(preview.summary.createdAt)}</p><p>{labels.teacher}: {preview.summary.teacher || '—'}</p>
+      <dl>{labels.counts.split(' · ').map((label, index) => <div key={index}><dt>{label}</dt><dd>{[preview.summary.courses, preview.summary.students, preview.summary.worksheets, preview.summary.reports][index]}</dd></div>)}</dl>
+      <div className="modal-actions"><button className="secondary" disabled={busy} onClick={cancel}>{labels.cancel}</button><button className="danger-confirm" disabled={busy} aria-busy={busy} onClick={() => void run('restore')}>{labels.confirm}</button></div>
+    </Modal>}
+  </section>;
+}
+
 function Settings({ state, refresh, notify, onProfileChange }: { state: InitialState; refresh: () => Promise<void>; notify: (n: Notice) => void; onProfileChange: (profile: InitialState['profile']) => void }) {
   const [firstName, setFirstName] = useState(state.profile.firstName); const [lastName, setLastName] = useState(state.profile.lastName); const [sex, setSex] = useState<TeacherSex>(state.profile.sex === 'FEMALE' ? 'FEMALE' : 'MALE');
   const [deleteTarget, setDeleteTarget] = useState<'center' | 'logo' | null>(null);
@@ -525,6 +563,12 @@ function Settings({ state, refresh, notify, onProfileChange }: { state: InitialS
     <section className="panel teacher-profile-panel"><div className="panel-heading"><span className="panel-icon"><Icon name="teacher" /></span><div><h2>{tr('teacherData')}</h2><p>{tr('teacherDataHelp')}</p></div></div><div className="teacher-profile-fields"><label>{tr('firstName')}<input value={firstName} onChange={e => changeProfile('firstName', e.target.value)} onBlur={() => void persistProfile()} placeholder={tr('yourName')} /></label><label>{tr('lastName')}<input value={lastName} onChange={e => changeProfile('lastName', e.target.value)} onBlur={() => void persistProfile()} placeholder={tr('yourLastName')} /></label><label>{tr('sex')}<select required aria-required="true" value={sex} onChange={event => void changeSex(event.target.value as TeacherSex)}><option value="MALE">{tr('male')}</option><option value="FEMALE">{tr('female')}</option></select></label></div></section>
     {deleteTarget === 'center' && <ConfirmDeleteModal title={tr('deleteCenterDataTitle')} question={tr('deleteCenterDataQuestion')} identifier={tr('centerData')} note={tr('deleteCenterDataNote')} confirmationText="datos" confirmationPlaceholder="datos" close={() => setDeleteTarget(null)} confirm={clearCenterData} />}
     {deleteTarget === 'logo' && <ConfirmDeleteModal title={tr('removeLogoTitle')} question={tr('removeLogoQuestion')} identifier={tr('schoolLogo')} note={tr('removeLogoNote')} confirmationText="logo" confirmationPlaceholder="logo" close={() => setDeleteTarget(null)} confirm={removeLogo} />}
+    <BackupPanel language={state.language} refresh={async () => {
+      const next = await window.fullSeguiment.getInitialState();
+      latestProfile.current = { ...next.profile, sex: next.profile.sex === 'FEMALE' ? 'FEMALE' : 'MALE' }; profileDirty.current = false; profileRevision.current += 1;
+      setFirstName(next.profile.firstName); setLastName(next.profile.lastName); setSex(next.profile.sex === 'FEMALE' ? 'FEMALE' : 'MALE');
+      await refresh();
+    }} />
     {centerPreview && <CenterUpdatePreviewModal result={centerPreview} cancel={() => void cancelCenterPreview()} apply={applyCenterPreview} />}
   </>;
 }

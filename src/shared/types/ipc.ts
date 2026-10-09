@@ -1,10 +1,15 @@
 import type { CourseLevel, Trimester } from '../catalogs/catalogs';
+import type { BackupPreviewResult, BackupResult } from '../backup';
 import type { AssessmentKind, GradeMode } from './models';
 import type { AppLanguage, CenterConfiguration, CenterRosterChange, CenterUpdatePreview, ConfiguredCourse, ConfiguredSubject, FullSeguimentExport, ImportedWorksheetDetail, ImportedWorksheetSummary, ImportAnalysis, InitialState, ReportSubjectExclusion, RosterAssignment, RosterFileAnalysis, Student, TeacherProfile, TrackingReportSummary, WorksheetDetail, WorksheetFileAnalysis, WorksheetSummary } from './models';
 
 export interface OperationResult { ok: boolean; code?: string; error?: string; replaced?: boolean; count?: number; worksheetId?: number; missingInFile?: string[]; extraInFile?: string[] }
 
 export interface FullSeguimentApi {
+  exportBackup(): Promise<BackupResult>;
+  previewBackup(): Promise<BackupPreviewResult>;
+  restoreBackup(token: string): Promise<BackupResult>;
+  cancelBackup(): Promise<void>;
   getInitialState(): Promise<InitialState>;
   saveLanguage(language: AppLanguage): Promise<AppLanguage>;
   saveProfile(profile: TeacherProfile): Promise<TeacherProfile>;

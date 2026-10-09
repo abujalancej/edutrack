@@ -1,7 +1,9 @@
-import { dialog, ipcMain } from 'electron';
+import { app, dialog, ipcMain } from 'electron';
+import { BackupService } from '../backup/backup-service';
+import { backupLabels } from '../../shared/backup-labels';
 import { fileDialogLabels } from './file-dialog-labels';
 import { readFile, writeFile } from 'node:fs/promises';
-import { basename, extname } from 'node:path';
+import { basename, extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { isCourseLevel, normalizeTrimester } from '../../shared/catalogs/catalogs';
 import { isCompleteGradeValue } from '../../shared/grades/grades';
@@ -16,6 +18,34 @@ import { parseRosterFile } from '../import/roster-parser';
 import { parseCenterFile, parseCoursesFile, parseSubjectsFile } from '../import/catalog-parser';
 
 export function registerIpc(db: AppDatabase) {
+  const backups = new BackupService(db, join(app.getPath('userData'), 'backups'));
+  ipcMain.handle('backup:export', async () => {
+    try {
+      const labels = backupLabels[db.getLanguage()];
+      const result = await dialog.showSaveDialog({ title: labels.export, defaultPath: `EduTrack-${new Date().toISOString().replace(/[:.]/g, '-')}.edutrack-backup`, filters: [{ name: labels.file, extensions: ['edutrack-backup'] }] });
+      if (result.canceled || !result.filePath) return { ok: false, cancelled: true };
+      await backups.export(result.filePath);
+      return { ok: true, path: result.filePath };
+    } catch { return { ok: false }; }
+  });
+  ipcMain.handle('backup:preview', async () => {
+    backups.cancel();
+    try {
+      const labels = backupLabels[db.getLanguage()];
+      const result = await dialog.showOpenDialog({ title: labels.restore, properties: ['openFile'], filters: [{ name: labels.file, extensions: ['edutrack-backup'] }] });
+      if (result.canceled || !result.filePaths[0]) return { ok: false, cancelled: true };
+      return { ok: true, ...await backups.preview(result.filePaths[0]) };
+    } catch { return { ok: false }; }
+  });
+  ipcMain.handle('backup:cancel', () => backups.cancel());
+  ipcMain.handle('backup:restore', async (_event, token: unknown) => {
+    try {
+      if (typeof token !== 'string') return { ok: false };
+      const path = await backups.restore(token);
+      pendingCenterUpdate = null;
+      return { ok: true, path };
+    } catch { return { ok: false }; }
+  });
   let pendingCenterUpdate: { token: string; courses: Array<{ name: string; subjects: string[]; students: string[] }>; centerConfiguration: ReturnType<AppDatabase['getCenterConfiguration']>; revision: string } | null = null;
   ipcMain.handle('state:get', () => db.getInitialState());
   ipcMain.handle('language:save', (_e, language) => db.saveLanguage(language));

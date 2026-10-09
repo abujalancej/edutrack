@@ -9,6 +9,7 @@ const electron = vi.hoisted(() => ({
   showOpenDialog: vi.fn()
 }));
 vi.mock('electron', () => ({
+  app: { getPath: () => process.cwd() },
   ipcMain: { handle: (channel: string, handler: (...args: unknown[]) => unknown) => electron.handlers.set(channel, handler) },
   dialog: { showOpenDialog: electron.showOpenDialog },
   BrowserWindow: class {}

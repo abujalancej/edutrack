@@ -74,6 +74,56 @@ export class AppDatabase {
   private transactionDepth = 0;
 
   constructor(path: string) {
+  exportBackup() {
+    const tables = (this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as Row[]).map(row => String(row.name));
+    return {
+      format: 'edutrack-backup' as const, version: 1 as const, createdAt: new Date().toISOString(),
+      tables: Object.fromEntries(tables.map(name => [name, {
+        columns: (this.db.prepare(`PRAGMA table_info("${name}")`).all() as Row[]).map(row => String(row.name)),
+        rows: this.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()
+      }])),
+      sequences: this.db.prepare('SELECT name, seq FROM sqlite_sequence ORDER BY name').all()
+    };
+  }
+
+  restoreBackup(input: unknown) {
+    const expected = this.exportBackup();
+    const backup = input as ReturnType<AppDatabase['exportBackup']>;
+    if (!backup || backup.format !== 'edutrack-backup' || backup.version !== 1 || typeof backup.createdAt !== 'string' || !Number.isFinite(Date.parse(backup.createdAt)) || !backup.tables || !Array.isArray(backup.sequences)) throw new Error('INVALID_BACKUP');
+    const names = Object.keys(expected.tables);
+    if (JSON.stringify(Object.keys(backup.tables).sort()) !== JSON.stringify(names.sort())) throw new Error('INCOMPATIBLE_BACKUP');
+    for (const name of names) {
+      const table = backup.tables[name];
+      if (!table || JSON.stringify(table.columns) !== JSON.stringify(expected.tables[name].columns) || !Array.isArray(table.rows)) throw new Error('INCOMPATIBLE_BACKUP');
+      for (const row of table.rows) {
+        if (!row || JSON.stringify(Object.keys(row).sort()) !== JSON.stringify([...table.columns].sort()) || Object.values(row).some(value => value !== null && typeof value !== 'string' && (typeof value !== 'number' || !Number.isFinite(value)))) throw new Error('INVALID_BACKUP');
+      }
+    }
+    if (backup.sequences.some(row => !names.includes(String(row.name)) || !Number.isSafeInteger(row.seq) || Number(row.seq) < 0)) throw new Error('INVALID_BACKUP');
+    this.transaction(() => {
+      // Preserve the stored enrollment history rather than firing the normal
+      // new-student trigger while importing the students table.
+      const triggers = this.db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger'").all() as Row[];
+      for (const trigger of triggers) this.db.exec(`DROP TRIGGER "${String(trigger.name).replaceAll('"', '""')}"`);
+      this.db.exec('PRAGMA defer_foreign_keys = ON');
+      for (const name of names) this.db.exec(`DELETE FROM "${name}"`);
+      for (const name of names) {
+        const { columns, rows } = backup.tables[name];
+        const insert = this.db.prepare(`INSERT INTO "${name}" (${columns.map(column => `"${column}"`).join(',')}) VALUES (${columns.map(() => '?').join(',')})`);
+        for (const row of rows) insert.run(...columns.map(column => row[column]));
+      }
+      this.db.exec('DELETE FROM sqlite_sequence');
+      const sequence = this.db.prepare('INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)');
+      for (const row of backup.sequences) sequence.run(row.name, row.seq);
+      for (const trigger of triggers) this.db.exec(trigger.sql);
+      if (this.db.prepare('PRAGMA foreign_key_check').all().length || this.db.prepare('SELECT COUNT(*) AS count FROM teacher_profile').get()!.count !== 1 || this.db.prepare('SELECT COUNT(*) AS count FROM app_preferences').get()!.count !== 1) throw new Error('INVALID_BACKUP');
+      if (!['es', 'ca', 'en', 'eu', 'gl'].includes(String(this.db.prepare('SELECT language FROM app_preferences').get()!.language))) throw new Error('INVALID_BACKUP');
+      this.getInitialState();
+      for (const sheet of this.listWorksheets()) this.getWorksheet(sheet.id);
+      for (const report of this.listTrackingReports()) this.getReportSnapshot(report.id);
+    });
+  }
+
     this.db = new DatabaseSync(path);
     this.db.exec('PRAGMA journal_mode = WAL');
     this.db.exec('PRAGMA foreign_keys = ON');

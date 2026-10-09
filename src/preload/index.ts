@@ -2,6 +2,10 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { FullSeguimentApi } from '../shared/types/ipc';
 
 const api: FullSeguimentApi = {
+  exportBackup: () => ipcRenderer.invoke('backup:export'),
+  previewBackup: () => ipcRenderer.invoke('backup:preview'),
+  restoreBackup: token => ipcRenderer.invoke('backup:restore', token),
+  cancelBackup: () => ipcRenderer.invoke('backup:cancel'),
   getInitialState: () => ipcRenderer.invoke('state:get'),
   saveLanguage: language => ipcRenderer.invoke('language:save', language),
   saveProfile: profile => ipcRenderer.invoke('profile:save', profile),
