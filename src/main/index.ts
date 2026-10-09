@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, Menu, shell } from 'electron';
 import { join } from 'node:path';
 import { AppDatabase } from './database/database';
 import { registerIpc } from './ipc/register';
@@ -18,6 +18,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null);
   if (process.platform === 'darwin') app.dock?.setIcon(appIconPath);
   database = new AppDatabase(join(app.getPath('userData'), 'edutrack.sqlite'));
   registerIpc(database);
