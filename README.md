@@ -1,4 +1,4 @@
-# EduTrack 1.2.0
+# EduTrack 1.3.0
 
 [Changelog](CHANGELOG.md)
 
